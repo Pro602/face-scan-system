@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ระบบบันทึกเวลาเข้างาน</title>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <script src="js/api-config.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -197,9 +196,10 @@
   </div>
 
   <script>
-    if (!localStorage.getItem('gasApiUrl') && typeof GAS_API_URL === 'undefined') {
-      document.getElementById('apiWarning').style.display = 'block';
-    }
+const API_URL = "https://script.google.com/macros/s/AKfycbz7q9qmKaoWOm-a15qX61fHS9SdYynVK2qOUkEJtmmPo1XM7msl0dSTYnvbSEKjOyjEDA/exec"
+
+// ไม่ต้องเช็คแล้ว ซ่อน warning ไปเลย
+document.getElementById('apiWarning').style.display = 'none'
   </script>
 </body>
 </html>
