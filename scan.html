@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>สแกนเข้างาน</title>
+
+<script src="js/api-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+<style>
+body{
+font-family:sans-serif;
+background:#0f172a;
+color:white;
+text-align:center;
+padding:30px;
+}
+video{
+width:100%;
+max-width:420px;
+border-radius:15px;
+transform:scaleX(-1);
+}
+button{
+padding:14px 30px;
+font-size:18px;
+border:none;
+border-radius:40px;
+background:#6366f1;
+color:white;
+margin-top:20px;
+cursor:pointer;
+}
+select{
+padding:10px;
+border-radius:8px;
+margin:10px;
+}
+#status{
+margin-bottom:15px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>📷 สแกนเข้างาน</h2>
+
+<div id="status">กำลังเตรียมระบบ...</div>
+
+<video id="video" autoplay muted playsinline></video>
+
+<br>
+
+<select id="typeSelect">
+  <option value="IN">เข้างาน (IN)</option>
+  <option value="OUT">ออกงาน (OUT)</option>
+</select>
+
+<select id="locationSelect">
+  <option value="">-- นอกสถานที่ --</option>
+</select>
+
+<br>
+
+<button onclick="startCamera()">เริ่มสแกน</button>
+
+<script>
+
+const API_URL = localStorage.getItem('gasApiUrl') || GAS_API_URL
+
+const video = document.getElementById("video")
+const status = document.getElementById("status")
+
+const MATCH_THRESHOLD = 0.45
+const DUPLICATE_LIMIT = 60 * 1000
+
+let knownFaces = []
+let locationsData = []
+let scanInterval = null
+let lastScanTime = {}
+
+let blinkDetected = false
+let lastEyeOpen = true
+
+window.onload = init
+
+/* ============================= */
+async function init(){
+
+  status.innerText="กำลังโหลด AI..."
+
+  const MODEL_URL="https://justadudewhohacks.github.io/face-api.js/models"
+
+  await Promise.all([
+    faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+  ])
+
+  status.innerText="โหลดฐานข้อมูล..."
+
+  await loadFaceDatabase()
+  await loadLocations()
+
+  status.innerText="พร้อมใช้งาน (กระพริบตาก่อนสแกน)"
+}
+
+/* ============================= */
+function loadFaceDatabase(){
+  return new Promise((resolve, reject) => {
+
+    const cbName = "cb_" + Date.now()
+
+    window[cbName] = function(data){
+
+      delete window[cbName]
+      document.body.removeChild(script)
+
+      knownFaces = data.map(u => ({
+        studentId: u.studentId,
+        name: u.name,
+        class: u.department,
+        descriptor: new Float32Array(u.descriptor)
+      }))
+
+      resolve()
+    }
+
+    const script = document.createElement("script")
+    script.src = API_URL + "?action=faces&callback=" + cbName
+    script.onerror = reject
+
+    document.body.appendChild(script)
+  })
+}
+
+/* ============================= */
+function loadLocations(){
+  return new Promise((resolve, reject)=>{
+
+    const cbName = "loc_" + Date.now()
+
+    window[cbName] = function(data){
+
+      delete window[cbName]
+      document.body.removeChild(script)
+
+      locationsData = data
+
+      const select = document.getElementById("locationSelect")
+
+      data.forEach(loc=>{
+        const opt = document.createElement("option")
+        opt.value = loc.name
+        opt.textContent = loc.name
+        select.appendChild(opt)
+      })
+
+      resolve()
+    }
+
+    const script = document.createElement("script")
+    script.src = API_URL + "?action=locations&callback=" + cbName
+
+    script.onerror = reject
+    document.body.appendChild(script)
+  })
+}
+
+/* ============================= */
+function startCamera(){
+  navigator.mediaDevices.getUserMedia({video:true})
+    .then(stream=>{
+      video.srcObject=stream
+      startScanLoop()
+    })
+}
+
+/* ============================= */
+function getEyeDistance(eye){
+  const dx = eye[0].x - eye[3].x
+  return Math.abs(dx)
+}
+
+function detectBlink(landmarks){
+
+  const left = landmarks.getLeftEye()
+  const dist = getEyeDistance(left)
+
+  if(dist < 10 && lastEyeOpen){
+    blinkDetected = true
+  }
+
+  lastEyeOpen = dist > 12
+}
+
+/* ============================= */
+function startScanLoop(){
+
+  if(scanInterval) clearInterval(scanInterval)
+
+  scanInterval = setInterval(async ()=>{
+
+    const detection = await faceapi
+      .detectSingleFace(video)
+      .withFaceLandmarks()
+      .withFaceDescriptor()
+
+    if(!detection) return
+
+    //detectBlink(detection.landmarks)
+
+    //if(!blinkDetected){
+      //status.innerText="กรุณากระพริบตา"
+      //return
+    //}
+
+    const best = findBestMatch(detection.descriptor)
+
+    if(best && best.distance < MATCH_THRESHOLD){
+      clearInterval(scanInterval)
+      confirmAttendance(best)
+    }
+
+  },700)
+}
+
+/* ============================= */
+function findBestMatch(query){
+
+  let best=null
+
+  knownFaces.forEach(face=>{
+    const dist = faceapi.euclideanDistance(query, face.descriptor)
+    if(!best || dist < best.distance){
+      best = {...face, distance:dist}
+    }
+  })
+
+  return best
+}
+
+/* ============================= */
+function getGPS(){
+  return new Promise(resolve=>{
+    navigator.geolocation.getCurrentPosition(
+      pos=>{
+        resolve({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude
+        })
+      },
+      ()=>resolve({lat:"",lng:""})
+    )
+  })
+}
+
+/* ============================= */
+function getDistance(lat1, lon1, lat2, lon2){
+  const R = 6371e3
+  const toRad = x => x*Math.PI/180
+
+  const dLat = toRad(lat2-lat1)
+  const dLon = toRad(lon2-lon1)
+
+  const a =
+    Math.sin(dLat/2)**2 +
+    Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*
+    Math.sin(dLon/2)**2
+
+  return R * (2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)))
+}
+
+/* ============================= */
+function getStatus(type){
+
+  const now = new Date()
+  const t = now.getHours()*60 + now.getMinutes()
+
+  if(type==="OUT") return "ออกงาน"
+
+  if(t <= 510) return "มาปกติ" // 08:30
+  if(t >= 720 && t <= 780) return "มาปกติ" // 12-13
+
+  return "สาย"
+}
+
+/* ============================= */
+function playBeep(){
+  new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3").play()
+}
+
+/* ============================= */
+async function confirmAttendance(user){
+
+  const type = document.getElementById("typeSelect").value
+  const locationName = document.getElementById("locationSelect").value || "นอกสถานที่"
+
+  const now = Date.now()
+
+  if(lastScanTime[user.studentId] && (now - lastScanTime[user.studentId]) < DUPLICATE_LIMIT){
+    alert("❌ สแกนซ้ำเร็วเกินไป")
+    startScanLoop()
+    return
+  }
+
+  const gps = await getGPS()
+  const locationText = gps.lat + "," + gps.lng
+
+  const loc = locationsData.find(l => l.name === locationName)
+
+  if(loc && gps.lat){
+    const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng)
+    if(dist > (loc.radius || 100)){
+      alert("❌ อยู่นอกพื้นที่")
+      startScanLoop()
+      return
+    }
+  }
+
+  const statusText = getStatus(type)
+
+  if(!confirm(`ยืนยัน ${type}\n${user.name}`)){
+    startScanLoop()
+    return
+  }
+
+  playBeep()
+
+  await fetch(API_URL,{
+    method:"POST",
+    mode:"no-cors",
+    headers:{
+      "Content-Type":"application/json"
+    },
+    body:JSON.stringify({
+      action:"attendance",
+      studentId:user.studentId,
+      name:user.name,
+      department:user.class,
+      type:type,
+      location:locationText,
+      locationName:locationName,
+      status:statusText
+    })
+  })
+
+  lastScanTime[user.studentId] = now
+
+  alert("✅ บันทึกสำเร็จ")
+  location.reload()
+}
+
+</script>
+
+</body>
+</html>
