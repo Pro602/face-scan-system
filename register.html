@@ -8,51 +8,58 @@
 <title>ลงทะเบียนใบหน้า</title>
 
 <script src="api-config.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
 <style>
 
 body{
-font-family:sans-serif;
-background:#0f172a;
-color:white;
-text-align:center;
-padding:30px
+  font-family:sans-serif;
+  background:#0f172a;
+  color:white;
+  text-align:center;
+  padding:30px
 }
 
 video{
-width:100%;
-max-width:400px;
-border-radius:12px;
-margin-bottom:20px;
-transform:scaleX(-1)
+  width:100%;
+  max-width:400px;
+  border-radius:12px;
+  margin-bottom:20px;
+  transform:scaleX(-1)
 }
 
 input{
-width:100%;
-max-width:350px;
-padding:12px;
-margin:8px;
-border-radius:8px;
-border:none
+  width:100%;
+  max-width:350px;
+  padding:12px;
+  margin:8px;
+  border-radius:8px;
+  border:none
 }
 
 button{
-padding:14px 25px;
-border:none;
-border-radius:8px;
-background:#6366f1;
-color:white;
-font-size:16px;
-cursor:pointer
+  padding:14px 25px;
+  border:none;
+  border-radius:8px;
+  background:#6366f1;
+  color:white;
+  font-size:16px;
+  cursor:pointer
 }
 
-button:disabled{
-background:#555
-}
+#status{ margin-bottom:10px }
 
-#status{
-margin-bottom:10px
+#loginBox{
+  position:fixed;
+  top:0; left:0;
+  width:100%;
+  height:100%;
+  background:#000d;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  z-index:999;
 }
 
 </style>
@@ -65,19 +72,25 @@ margin-bottom:10px
 
 <div id="status">กำลังโหลด AI...</div>
 
+<!-- 🔐 LOGIN -->
+<div id="loginBox" style="display:none;">
+  <h3>🔐 Admin Login</h3>
+  <input id="loginUser" placeholder="User">
+  <input id="loginPass" type="password" placeholder="Password">
+  <button onclick="doLogin()">เข้าสู่ระบบ</button>
+</div>
+
 <video id="video" autoplay muted playsinline></video>
 
 <br>
 
 <input id="studentId" placeholder="รหัสพนักงาน">
-<br>
 <input id="username" placeholder="ชื่อ-นามสกุล">
-<br>
 <input id="userClass" placeholder="แผนก">
 
-<br><br>
+<br>
 
-<button type="button" id="btnSave" disabled onclick="saveFace()">
+<button id="btnSave" disabled onclick="saveFace()">
 📸 บันทึกใบหน้า
 </button>
 
@@ -85,88 +98,131 @@ margin-bottom:10px
 
 <script>
 
-const API_URL = localStorage.getItem("gasApiUrl") || GAS_API_URL
+// ================= CONFIG =================
+const API_URL = localStorage.getItem("gasApiUrl") || (typeof GAS_API_URL !== "undefined" ? GAS_API_URL : "")
 
+if(!API_URL){
+  alert("❌ ยังไม่ได้ตั้งค่า API")
+}
+
+// ================= ELEMENT =================
 const video = document.getElementById("video")
 const statusDiv = document.getElementById("status")
 const btnSave = document.getElementById("btnSave")
 const msgDiv = document.getElementById("msg")
 
+// ================= LOGIN =================
+window.onload = () => {
+
+  if(localStorage.getItem("isLogin") !== "true"){
+    document.getElementById("loginBox").style.display="flex"
+  }
+
+  init()
+}
+
+async function doLogin(){
+
+  const user = document.getElementById("loginUser").value
+  const pass = document.getElementById("loginPass").value
+
+  try{
+
+    const res = await fetch(API_URL,{
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify({
+        action:"login",
+        user:user,
+        pass:pass
+      })
+    })
+
+    const data = await res.json()
+
+    if(data.success){
+      localStorage.setItem("isLogin","true")
+      document.getElementById("loginBox").style.display="none"
+    }else{
+      alert("❌ รหัสไม่ถูกต้อง")
+    }
+
+  }catch(e){
+    alert("❌ เชื่อมต่อ server ไม่ได้")
+  }
+}
+
+// ================= INIT AI =================
 async function init(){
 
-try{
+  try{
 
-statusDiv.innerText="กำลังโหลด AI Model..."
+    statusDiv.innerText="กำลังโหลด AI..."
 
-const MODEL_URL="https://justadudewhohacks.github.io/face-api.js/models"
+    const MODEL_URL="https://justadudewhohacks.github.io/face-api.js/models"
 
-await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL)
-await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL)
-await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL)
+    await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL)
+    await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
 
-statusDiv.innerText="AI พร้อมใช้งาน"
+    statusDiv.innerText="AI พร้อมใช้งาน"
 
-startCamera()
+    startCamera()
+    btnSave.disabled=false
 
-btnSave.disabled=false
+  }catch(e){
 
-}catch(e){
+    console.error(e)
+    statusDiv.innerText="❌ โหลด AI ไม่สำเร็จ"
 
-console.error(e)
-
-statusDiv.innerText="โหลด AI ไม่สำเร็จ"
-
+  }
 }
 
-}
-
+// ================= CAMERA =================
 function startCamera(){
 
-navigator.mediaDevices.getUserMedia({video:true})
-
-.then(stream=>{
-video.srcObject=stream
-})
-
-.catch(err=>{
-console.log(err)
-})
-
+  navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}})
+    .then(stream=>{
+      video.srcObject=stream
+    })
+    .catch(err=>{
+      console.log(err)
+      alert("❌ เปิดกล้องไม่ได้")
+    })
 }
 
+// ================= SAVE FACE =================
 async function saveFace(){
 
-  const studentId=document.getElementById("studentId").value.trim()
-  const name=document.getElementById("username").value.trim()
-  const userClass=document.getElementById("userClass").value.trim()
+  const studentId = document.getElementById("studentId").value.trim()
+  const name = document.getElementById("username").value.trim()
+  const userClass = document.getElementById("userClass").value.trim()
 
-  if(!studentId||!name||!userClass){
+  if(!studentId || !name || !userClass){
     alert("กรอกข้อมูลให้ครบ")
     return
   }
 
   msgDiv.innerText="กำลังสแกนใบหน้า..."
 
-  const detection=await faceapi
+  const detection = await faceapi
     .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
     .withFaceLandmarks()
     .withFaceDescriptor()
 
   if(!detection){
-    alert("ไม่พบใบหน้า")
+    alert("❌ ไม่พบใบหน้า")
     return
   }
 
-  const descriptor=Array.from(detection.descriptor)
+  const descriptor = Array.from(detection.descriptor)
 
   try{
 
     await fetch(API_URL,{
       method:"POST",
-      mode:"no-cors",   // ⭐ สำคัญมาก
-      headers:{
-        "Content-Type":"application/json"
-      },
+      mode:"no-cors", // ⭐ สำคัญ
+      headers:{ "Content-Type":"application/json" },
       body:JSON.stringify({
         action:"registerUser",
         studentId:studentId,
@@ -176,18 +232,15 @@ async function saveFace(){
       })
     })
 
-    // ⭐ no-cors อ่าน response ไม่ได้ → ถือว่าสำเร็จ
-    msgDiv.innerText="บันทึกสำเร็จ"
+    msgDiv.innerText="✅ บันทึกสำเร็จ"
 
   }catch(e){
 
     console.error(e)
-    msgDiv.innerText="บันทึกไม่สำเร็จ"
+    msgDiv.innerText="❌ บันทึกไม่สำเร็จ"
 
   }
 }
-
-window.onload=init
 
 </script>
 
