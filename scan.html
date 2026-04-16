@@ -7,7 +7,7 @@
 <title>สแกนเข้างาน PRO</title>
 
 <script src="api-config.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
 
 <style>
 body{
@@ -33,7 +33,6 @@ select,button{
 <body>
 
 <h2>📷 สแกนเข้างาน (PRO)</h2>
-
 <div id="status">กำลังโหลด...</div>
 
 <video id="video" autoplay muted playsinline></video>
@@ -51,32 +50,29 @@ select,button{
 
 <br>
 
-<button onclick="startAll()">เริ่มสแกน</button>
+<button onclick="startSystem()">เริ่มสแกน</button>
 
 <script>
 
 // ================= CONFIG =================
-const API_URL =
-  localStorage.getItem('gasApiUrl') ||
-  (typeof GAS_API_URL !== "undefined" ? GAS_API_URL : "")
+const API_URL = localStorage.getItem('gasApiUrl') || (typeof GAS_API_URL !== "undefined" ? GAS_API_URL : "")
 
 if(!API_URL){
   alert("❌ ยังไม่ได้ตั้งค่า API")
-  throw new Error("No API")
 }
 
 // ================= VAR =================
 const video = document.getElementById("video")
 const status = document.getElementById("status")
 
-let knownFaces=[]
+let faces=[]
 let locations=[]
 let scanning=false
-let isProcessing=false
+let processing=false
 
-let lastDescriptor=null
-let moveCount=0
-let lastAlertLocation=""
+let lastDesc=null
+let stableCount=0
+let lastAlert=""
 
 // 🔊 AUDIO
 let audioReady=false
@@ -91,10 +87,12 @@ function unlockAudio(){
 
 function playSound(type){
   if(!audioReady) return
+
   let url=""
   if(type==="IN") url="https://www.soundjay.com/buttons/sounds/button-3.mp3"
   else if(type==="OUT") url="https://www.soundjay.com/buttons/sounds/button-4.mp3"
   else url="https://www.soundjay.com/buttons/sounds/button-10.mp3"
+
   new Audio(url).play().catch(()=>{})
 }
 
@@ -105,34 +103,23 @@ function speak(text){
   speechSynthesis.speak(msg)
 }
 
-// ================= JSONP =================
-function loadJSONP(url){
-  return new Promise(resolve=>{
-    const cb = "cb_" + Date.now()
-    window[cb] = function(data){
-      resolve(data)
-      script.remove()
-    }
-    const script = document.createElement("script")
-    script.src = url + "&callback=" + cb
-    document.body.appendChild(script)
-  })
-}
-
 // ================= INIT =================
-window.onload=init
+window.onload = init
 
 async function init(){
   try{
+
     status.innerText="โหลด AI..."
 
-    const MODEL_URL="https://justadudewhohacks.github.io/face-api.js/models"
+    const MODEL="https://justadudewhohacks.github.io/face-api.js/models"
 
     await Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL)
     ])
+
+    status.innerText="โหลดข้อมูล..."
 
     await loadFaces()
     await loadLocations()
@@ -141,114 +128,105 @@ async function init(){
 
   }catch(e){
     console.error(e)
-    status.innerText="❌ โหลดระบบไม่สำเร็จ"
+    status.innerText="❌ โหลดไม่สำเร็จ"
   }
 }
 
 // ================= LOAD FACE =================
 async function loadFaces(){
   try{
-    status.innerText="โหลดพนักงาน..."
-    const data = await loadJSONP(API_URL+"?action=faces")
+    const res=await fetch(API_URL+"?action=faces&t="+Date.now())
+    const data=await res.json()
 
-    knownFaces = data.map(u=>({
-      studentId:u.studentId,
+    faces=data.map(u=>({
+      id:u.studentId,
       name:u.name,
-      class:u.department,
-      descriptor:new Float32Array(u.descriptor)
+      dept:u.department,
+      desc:new Float32Array(u.descriptor)
     }))
 
-    status.innerText="พนักงาน "+knownFaces.length+" คน"
+    status.innerText="พนักงาน "+faces.length+" คน"
 
   }catch(e){
-    status.innerText="❌ โหลดใบหน้าไม่ได้"
+    status.innerText="❌ โหลดพนักงานไม่ได้"
   }
 }
 
 // ================= LOAD LOCATION =================
 async function loadLocations(){
   try{
-    const data = await loadJSONP(API_URL+"?action=locations")
+    const res=await fetch(API_URL+"?action=locations&t="+Date.now())
+    const data=await res.json()
 
-    locations = data
+    locations=data
 
-    const select=document.getElementById("locationSelect")
+    const sel=document.getElementById("locationSelect")
 
     data.forEach(l=>{
-      const opt=document.createElement("option")
-      opt.value=l.name
-      opt.textContent=l.name
-      select.appendChild(opt)
+      const o=document.createElement("option")
+      o.value=l.name
+      o.textContent=l.name
+      sel.appendChild(o)
     })
 
-  }catch(e){
-    status.innerText="❌ โหลด location ไม่ได้"
-  }
+  }catch(e){}
 }
 
 // ================= START =================
-function startAll(){
+function startSystem(){
   unlockAudio()
 
-  navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}})
+  navigator.mediaDevices.getUserMedia({video:true})
   .then(stream=>{
     video.srcObject=stream
     scanning=true
     scanLoop()
   })
-  .catch(()=> alert("❌ เปิดกล้องไม่ได้"))
 }
 
-// ================= SCAN =================
+// ================= SCAN LOOP =================
 async function scanLoop(){
 
   if(!scanning) return
 
-  if(isProcessing){
+  if(processing){
     requestAnimationFrame(scanLoop)
     return
   }
 
   const det = await faceapi
-    .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions({
-      inputSize:320,
-      scoreThreshold:0.5
-    }))
+    .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
     .withFaceLandmarks()
     .withFaceDescriptor()
 
   if(det){
 
-    // 🔥 กันรูปถ่าย (ปรับให้ไม่ฆ่าคนจริง)
-    if(lastDescriptor){
-      const diff = faceapi.euclideanDistance(det.descriptor,lastDescriptor)
+    // 🔥 กันรูปถ่าย (ต้องขยับ)
+    if(lastDesc){
+      const diff = faceapi.euclideanDistance(det.descriptor,lastDesc)
 
-      if(diff < 0.008){
-        moveCount++
+      if(diff < 0.01){
+        stableCount++
       }else{
-        moveCount=0
+        stableCount=0
       }
 
-      if(moveCount > 10){
+      if(stableCount > 5){
         status.innerText="❌ ห้ามใช้รูปถ่าย"
         playSound("ERROR")
-        return requestAnimationFrame(scanLoop)
+        requestAnimationFrame(scanLoop)
+        return
       }
     }
 
-    lastDescriptor = det.descriptor
+    lastDesc = det.descriptor
 
-    const best = findMatch(det.descriptor)
+    const best = matchFace(det.descriptor)
 
-    // 🔥 debug distance
-    if(best){
-      status.innerText = best.name + " ("+best.distance.toFixed(3)+")"
-    }
-
-    if(best && best.distance < 0.55){
-      isProcessing=true
-      await confirmAttendance(best)
-      isProcessing=false
+    if(best && best.distance < 0.5){
+      processing=true
+      await confirm(best)
+      processing=false
     }
   }
 
@@ -256,14 +234,16 @@ async function scanLoop(){
 }
 
 // ================= MATCH =================
-function findMatch(desc){
+function matchFace(desc){
   let best=null
-  knownFaces.forEach(f=>{
-    const d=faceapi.euclideanDistance(desc,f.descriptor)
+
+  faces.forEach(f=>{
+    const d=faceapi.euclideanDistance(desc,f.desc)
     if(!best || d<best.distance){
       best={...f,distance:d}
     }
   })
+
   return best
 }
 
@@ -293,7 +273,7 @@ function distance(lat1,lon1,lat2,lon2){
 }
 
 // ================= CONFIRM =================
-async function confirmAttendance(user){
+async function confirm(user){
 
   const type=document.getElementById("typeSelect").value
   const locName=document.getElementById("locationSelect").value
@@ -302,39 +282,44 @@ async function confirmAttendance(user){
 
   if(!gps){
     playSound("ERROR")
-    alert("❌ เปิด GPS ก่อน")
+    alert("❌ เปิด GPS")
     return
   }
 
+  // ================= LOCATION CHECK =================
   if(locName !== "OUTSIDE"){
+
     const loc = locations.find(l=>l.name===locName)
 
     if(loc){
-      const dist = distance(gps.lat,gps.lng,loc.lat,loc.lng)
+      const d = distance(gps.lat,gps.lng,loc.lat,loc.lng)
 
-      if(dist > (loc.radius || 300)){
-        if(lastAlertLocation !== locName){
-          lastAlertLocation = locName
+      if(d > (loc.radius || 300)){
+
+        if(lastAlert !== locName){
+          lastAlert = locName
           playSound("ERROR")
           speak("อยู่นอกพื้นที่")
           alert("❌ อยู่นอกพื้นที่")
         }
+
         return
       }
     }
   }
 
-  lastAlertLocation=""
+  lastAlert=""
 
+  // ================= SAVE =================
   await fetch(API_URL,{
     method:"POST",
     mode:"no-cors",
     headers:{ "Content-Type":"application/json" },
     body:JSON.stringify({
       action:"attendance",
-      studentId:user.studentId,
+      studentId:user.id,
       name:user.name,
-      department:user.class,
+      department:user.dept,
       type:type,
       location:gps.lat+","+gps.lng,
       locationName:(locName==="OUTSIDE"?"นอกสถานที่":locName)
@@ -351,7 +336,6 @@ async function confirmAttendance(user){
 
   alert("✅ บันทึกสำเร็จ")
 }
-
 </script>
 
 </body>
