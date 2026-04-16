@@ -57,7 +57,7 @@ select{
 </select>
 
 <select id="locationSelect">
-  <option value="">-- นอกสถานที่ --</option>
+  <option value="">-- เลือกสถานที่ --</option>
 </select>
 
 <br>
@@ -78,7 +78,7 @@ let locationsData = []
 let scanInterval = null
 let isProcessing = false
 
-// 🔥 Anti Fake
+// 🔥 กันรูป
 let challenge = ""
 let challengePassed = false
 
@@ -209,7 +209,7 @@ function startScanLoop(){
 
     if(!detection) return
 
-    // 🔥 ตรวจหันหน้า
+    // 🔥 ตรวจหันหน้า (กันรูป)
     const nose = detection.landmarks.getNose()
     const noseX = nose[3].x
     const faceCenter = detection.detection.box.x + detection.detection.box.width/2
@@ -254,11 +254,75 @@ function findBestMatch(query){
   return best
 }
 
+// ================= GPS =================
+function getGPS(){
+  return new Promise(resolve=>{
+    navigator.geolocation.getCurrentPosition(
+      pos=>resolve({
+        lat:pos.coords.latitude,
+        lng:pos.coords.longitude
+      }),
+      ()=>resolve({lat:"",lng:""}),
+      {enableHighAccuracy:true,timeout:10000}
+    )
+  })
+}
+
+// ================= DIST =================
+function getDistance(lat1, lon1, lat2, lon2){
+  const R = 6371e3
+  const toRad = x=>x*Math.PI/180
+
+  const dLat = toRad(lat2-lat1)
+  const dLon = toRad(lon2-lon1)
+
+  const a =
+    Math.sin(dLat/2)**2 +
+    Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*
+    Math.sin(dLon/2)**2
+
+  return R*(2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)))
+}
+
 // ================= CONFIRM =================
 async function confirmAttendance(user){
 
   const type=document.getElementById("typeSelect").value
-  const locationName=document.getElementById("locationSelect").value || "นอกสถานที่"
+  const locationName=document.getElementById("locationSelect").value
+
+  if(!locationName){
+    alert("❌ กรุณาเลือกสถานที่")
+    isProcessing=false
+    startScanLoop()
+    return
+  }
+
+  const gps = await getGPS()
+
+  if(!gps.lat){
+    alert("❌ กรุณาเปิด GPS")
+    isProcessing=false
+    startScanLoop()
+    return
+  }
+
+  const locationText = gps.lat + "," + gps.lng
+
+  const loc = locationsData.find(l=>l.name===locationName)
+
+  if(loc){
+    const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng)
+
+    if(dist > (loc.radius || 300)){
+      playSound("ERROR")
+      speak("อยู่นอกพื้นที่")
+
+      alert("❌ อยู่นอกพื้นที่")
+      isProcessing=false
+      startScanLoop()
+      return
+    }
+  }
 
   if(!confirm(`ยืนยัน ${type}\n${user.name}`)){
     isProcessing=false
@@ -276,6 +340,7 @@ async function confirmAttendance(user){
       name:user.name,
       department:user.class,
       type:type,
+      location:locationText,
       locationName:locationName
     })
   })
