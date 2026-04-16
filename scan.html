@@ -55,8 +55,17 @@ select,button{
 
 <script>
 
-const API_URL = localStorage.getItem('gasApiUrl') || GAS_API_URL
+// ================= CONFIG =================
+const API_URL =
+  localStorage.getItem('gasApiUrl') ||
+  (typeof GAS_API_URL !== "undefined" ? GAS_API_URL : "")
 
+if(!API_URL){
+  alert("❌ ยังไม่ได้ตั้งค่า API")
+  throw new Error("No API")
+}
+
+// ================= VAR =================
 const video = document.getElementById("video")
 const status = document.getElementById("status")
 
@@ -67,10 +76,9 @@ let isProcessing=false
 
 let lastDescriptor=null
 let moveCount=0
+let lastAlertLocation=""
 
-let lastAlertLocation="" // ⭐ กัน alert รัว
-
-// 🔊 เสียง
+// 🔊 AUDIO
 let audioReady=false
 
 function unlockAudio(){
@@ -99,54 +107,92 @@ function speak(text){
   speechSynthesis.speak(msg)
 }
 
+// ================= JSONP (แก้ CORS) =================
+function loadJSONP(url){
+  return new Promise(resolve=>{
+    const cb = "cb_" + Date.now()
+
+    window[cb] = function(data){
+      resolve(data)
+      script.remove()
+    }
+
+    const script = document.createElement("script")
+    script.src = url + "&callback=" + cb
+    document.body.appendChild(script)
+  })
+}
+
 // ================= INIT =================
 window.onload=init
 
 async function init(){
+  try{
 
-  const MODEL_URL="https://justadudewhohacks.github.io/face-api.js/models"
+    status.innerText="โหลด AI..."
 
-  await Promise.all([
-    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-  ])
+    const MODEL_URL="https://justadudewhohacks.github.io/face-api.js/models"
 
-  await loadFaces()
-  await loadLocations()
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+    ])
 
-  status.innerText="พร้อมใช้งาน"
+    await loadFaces()
+    await loadLocations()
+
+    status.innerText="พร้อมใช้งาน"
+
+  }catch(e){
+    console.error(e)
+    status.innerText="❌ โหลดระบบไม่สำเร็จ"
+  }
 }
 
 // ================= LOAD FACE =================
 async function loadFaces(){
-  const res=await fetch(API_URL+"?action=faces&t="+Date.now())
-  const data=await res.json()
+  try{
 
-  knownFaces=data.map(u=>({
-    studentId:u.studentId,
-    name:u.name,
-    class:u.department,
-    descriptor:new Float32Array(u.descriptor)
-  }))
+    status.innerText="โหลดพนักงาน..."
+
+    const data = await loadJSONP(API_URL+"?action=faces")
+
+    knownFaces = data.map(u=>({
+      studentId:u.studentId,
+      name:u.name,
+      class:u.department,
+      descriptor:new Float32Array(u.descriptor)
+    }))
+
+    status.innerText="พนักงาน "+knownFaces.length+" คน"
+
+  }catch(e){
+    console.error(e)
+    status.innerText="❌ โหลดใบหน้าไม่ได้"
+  }
 }
 
 // ================= LOAD LOCATION =================
 async function loadLocations(){
+  try{
 
-  const res=await fetch(API_URL+"?action=locations&t="+Date.now())
-  const data=await res.json()
+    const data = await loadJSONP(API_URL+"?action=locations")
 
-  locations=data
+    locations = data
 
-  const select=document.getElementById("locationSelect")
+    const select=document.getElementById("locationSelect")
 
-  data.forEach(l=>{
-    const opt=document.createElement("option")
-    opt.value=l.name
-    opt.textContent=l.name
-    select.appendChild(opt)
-  })
+    data.forEach(l=>{
+      const opt=document.createElement("option")
+      opt.value=l.name
+      opt.textContent=l.name
+      select.appendChild(opt)
+    })
+
+  }catch(e){
+    status.innerText="❌ โหลด location ไม่ได้"
+  }
 }
 
 // ================= START =================
@@ -159,9 +205,12 @@ function startAll(){
     scanning=true
     scanLoop()
   })
+  .catch(()=>{
+    alert("❌ เปิดกล้องไม่ได้")
+  })
 }
 
-// ================= SCAN LOOP =================
+// ================= SCAN =================
 async function scanLoop(){
 
   if(!scanning) return
@@ -182,7 +231,7 @@ async function scanLoop(){
     if(lastDescriptor){
       const diff = faceapi.euclideanDistance(det.descriptor,lastDescriptor)
 
-      if(diff < 0.015){
+      if(diff < 0.02){
         moveCount++
       }else{
         moveCount=0
@@ -212,7 +261,6 @@ async function scanLoop(){
 
 // ================= MATCH =================
 function findMatch(desc){
-
   let best=null
 
   knownFaces.forEach(f=>{
@@ -276,7 +324,6 @@ async function confirmAttendance(user){
 
       if(dist > (loc.radius || 300)){
 
-        // ⭐ แจ้งเตือนแค่ครั้งเดียว
         if(lastAlertLocation !== locName){
           lastAlertLocation = locName
           playSound("ERROR")
@@ -289,7 +336,6 @@ async function confirmAttendance(user){
     }
   }
 
-  // reset alert
   lastAlertLocation=""
 
   // ================= SAVE =================
