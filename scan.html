@@ -66,7 +66,6 @@ select{
 
 <script>
 
-// ================= CONFIG =================
 const API_URL = localStorage.getItem('gasApiUrl') || GAS_API_URL
 
 const video = document.getElementById("video")
@@ -76,39 +75,31 @@ let knownFaces = []
 let locationsData = []
 
 let isProcessing = false
-let scanInterval = null
+let hasSaved = false   // ⭐ กันบันทึกซ้ำ
+let lastLocationAlert = ""
+let cooldown = false   // ⭐ กันยิงรัว
 
 const MATCH_THRESHOLD = 0.45
-
-// ================= 🔥 RANDOM CHALLENGE =================
-const challenges = ["LEFT","RIGHT","UPDOWN","MOUTH"]
-let currentChallenge = null
-let challengePassed = false
-
-function randomChallenge(){
-  currentChallenge = challenges[Math.floor(Math.random()*challenges.length)]
-  challengePassed = false
-
-  if(currentChallenge==="LEFT") speak("กรุณาหันซ้าย")
-  if(currentChallenge==="RIGHT") speak("กรุณาหันขวา")
-  if(currentChallenge==="UPDOWN") speak("กรุณาพยักหน้า")
-  if(currentChallenge==="MOUTH") speak("กรุณาอ้าปาก")
-}
-
-function getChallengeText(){
-  if(currentChallenge==="LEFT") return "👉 หันซ้าย"
-  if(currentChallenge==="RIGHT") return "👉 หันขวา"
-  if(currentChallenge==="UPDOWN") return "👉 พยักหน้า"
-  if(currentChallenge==="MOUTH") return "👉 อ้าปาก"
-  return ""
-}
 
 // ================= AUDIO =================
 let audioReady=false
 
 function unlockAudio(){
   const a=new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3")
-  a.play().then(()=>{a.pause();audioReady=true}).catch(()=>{})
+  a.play().then(()=>{
+    a.pause()
+    audioReady=true
+  }).catch(()=>{})
+}
+
+function playSound(type){
+  if(!audioReady) return
+  let url=""
+  if(type==="IN") url="https://www.soundjay.com/buttons/sounds/button-3.mp3"
+  else if(type==="OUT") url="https://www.soundjay.com/buttons/sounds/button-4.mp3"
+  else url="https://www.soundjay.com/buttons/sounds/button-10.mp3"
+
+  new Audio(url).play().catch(()=>{})
 }
 
 function speak(text){
@@ -116,11 +107,6 @@ function speak(text){
   const msg=new SpeechSynthesisUtterance(text)
   msg.lang="th-TH"
   speechSynthesis.speak(msg)
-}
-
-function playOK(){
-  if(!audioReady) return
-  new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3").play()
 }
 
 // ================= INIT =================
@@ -140,13 +126,6 @@ async function init(){
   await loadLocations()
 
   status.innerText="พร้อมใช้งาน"
-}
-
-// ================= START =================
-function startAll(){
-  unlockAudio()
-  randomChallenge()
-  startCamera()
 }
 
 // ================= LOAD =================
@@ -178,89 +157,104 @@ async function loadLocations(){
   })
 }
 
-// ================= CAMERA =================
-function startCamera(){
+// ================= START =================
+function startAll(){
+  unlockAudio()
+
+  hasSaved=false
+  cooldown=false
+
   navigator.mediaDevices.getUserMedia({video:true})
   .then(stream=>{
     video.srcObject=stream
-    startScanLoop()
+    runScan()
   })
 }
 
 // ================= SCAN =================
-function startScanLoop(){
+async function runScan(){
 
-  scanInterval=setInterval(async()=>{
+  if(isProcessing || hasSaved || cooldown) return
 
-    if(isProcessing) return
+  const det = await faceapi
+    .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
+    .withFaceLandmarks()
+    .withFaceDescriptor()
+
+  if(!det){
+    requestAnimationFrame(runScan)
+    return
+  }
+
+  const best = findMatch(det.descriptor)
+
+  if(best && best.distance < MATCH_THRESHOLD){
+
+    isProcessing=true
+
+    // 🔥 สุ่ม action (เร็วกว่า)
+    const action = randomAction()
+    await doActionCheck(action)
+
+    await confirmAttendance(best)
+
+    isProcessing=false
+  }
+
+  requestAnimationFrame(runScan)
+}
+
+// ================= ACTION =================
+function randomAction(){
+  const arr=["LEFT","RIGHT","UP"]
+  return arr[Math.floor(Math.random()*arr.length)]
+}
+
+async function doActionCheck(action){
+
+  let success=false
+  let timeout=0
+
+  if(action==="LEFT") speak("กรุณาหันซ้าย")
+  if(action==="RIGHT") speak("กรุณาหันขวา")
+  if(action==="UP") speak("กรุณาพยักหน้า")
+
+  while(!success && timeout<20){
 
     const det = await faceapi
       .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
       .withFaceLandmarks()
-      .withFaceDescriptor()
 
-    if(!det) return
+    if(det){
 
-    const lm = det.landmarks
-    const nose = lm.getNose()[3]
-    const box = det.detection.box
+      const nose = det.landmarks.getNose()[0]
 
-    const centerX = box.x + box.width/2
-    const offsetX = nose.x - centerX
-
-    const jaw = lm.getJawOutline()
-    const mouthOpen = jaw[8].y - lm.getNose()[6].y
-
-    status.innerText = getChallengeText()
-
-    // ================= CHECK =================
-    if(currentChallenge==="LEFT" && offsetX < -20){
-      challengePassed = true
+      if(action==="LEFT" && nose.x < 150) success=true
+      if(action==="RIGHT" && nose.x > 250) success=true
+      if(action==="UP" && nose.y < 200) success=true
     }
 
-    if(currentChallenge==="RIGHT" && offsetX > 20){
-      challengePassed = true
-    }
+    await new Promise(r=>setTimeout(r,150))
+    timeout++
+  }
 
-    if(currentChallenge==="UPDOWN"){
-      if(nose.y > box.y + box.height*0.6){
-        challengePassed = true
-      }
-    }
-
-    if(currentChallenge==="MOUTH"){
-      if(mouthOpen > 25){
-        challengePassed = true
-      }
-    }
-
-    // ================= PASS =================
-    if(challengePassed){
-
-      const best = findMatch(det.descriptor)
-
-      if(best && best.distance < MATCH_THRESHOLD){
-
-        isProcessing=true
-        clearInterval(scanInterval)
-
-        playOK()
-        confirmAttendance(best)
-      }
-    }
-
-  },400)
+  if(!success){
+    playSound("ERROR")
+    throw "fail action"
+  }
 }
 
 // ================= MATCH =================
 function findMatch(desc){
   let best=null
+
   knownFaces.forEach(f=>{
     const d=faceapi.euclideanDistance(desc,f.descriptor)
     if(!best || d<best.distance){
       best={...f,distance:d}
     }
   })
+
   return best
 }
 
@@ -269,47 +263,54 @@ function getGPS(){
   return new Promise(res=>{
     navigator.geolocation.getCurrentPosition(
       p=>res({lat:p.coords.latitude,lng:p.coords.longitude}),
-      ()=>res(null)
+      ()=>res(null),
+      {enableHighAccuracy:true,timeout:10000}
     )
   })
 }
 
-// ================= DIST =================
-function getDistance(lat1, lon1, lat2, lon2){
-  const R=6371e3
-  const toRad=x=>x*Math.PI/180
-  const dLat=toRad(lat2-lat1)
-  const dLon=toRad(lon2-lon1)
-
-  const a=Math.sin(dLat/2)**2+
-    Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*
-    Math.sin(dLon/2)**2
-
-  return R*(2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)))
-}
-
-// ================= SAVE =================
+// ================= CONFIRM =================
 async function confirmAttendance(user){
 
-  const type=document.getElementById("typeSelect").value
-  const locationName=document.getElementById("locationSelect").value || "นอกสถานที่"
+  if(hasSaved) return
 
-  const gps = await getGPS()
+  const type=document.getElementById("typeSelect").value
+  const locName=document.getElementById("locationSelect").value || "OUTSIDE"
+
+  const gps=await getGPS()
 
   if(!gps){
-    alert("❌ เปิด GPS ก่อน")
+    playSound("ERROR")
+    alert("❌ เปิด GPS")
     return
   }
 
-  const loc = locationsData.find(l=>l.name===locationName)
+  // ================= LOCATION CHECK =================
+  if(locName !== "OUTSIDE"){
 
-  if(loc){
-    const dist = getDistance(gps.lat,gps.lng,loc.lat,loc.lng)
-    if(dist > (loc.radius || 300)){
-      alert("❌ อยู่นอกพื้นที่")
-      return
+    const loc = locationsData.find(l=>l.name===locName)
+
+    if(loc){
+      const dist = getDistance(gps.lat,gps.lng,loc.lat,loc.lng)
+
+      if(dist > (loc.radius || 300)){
+
+        if(lastLocationAlert !== locName){
+          lastLocationAlert = locName
+          playSound("ERROR")
+          alert("❌ อยู่นอกพื้นที่")
+        }
+
+        return
+      }
     }
   }
+
+  lastLocationAlert=""
+
+  // ================= SAVE =================
+  hasSaved=true
+  cooldown=true
 
   await fetch(API_URL,{
     method:"POST",
@@ -322,12 +323,35 @@ async function confirmAttendance(user){
       department:user.class,
       type:type,
       location:gps.lat+","+gps.lng,
-      locationName:locationName
+      locationName:(locName==="OUTSIDE"?"นอกสถานที่":locName)
     })
   })
 
+  playSound(type)
+  speak(type==="IN" ? "สวัสดี "+user.name : "ลาก่อน "+user.name)
+
   alert("✅ บันทึกสำเร็จ")
-  location.reload()
+
+  // ⭐ กันยิงซ้ำ 5 วิ
+  setTimeout(()=>{
+    cooldown=false
+  },5000)
+}
+
+// ================= DIST =================
+function getDistance(lat1, lon1, lat2, lon2){
+  const R=6371e3
+  const toRad=x=>x*Math.PI/180
+
+  const dLat=toRad(lat2-lat1)
+  const dLon=toRad(lon2-lon1)
+
+  const a=
+    Math.sin(dLat/2)**2 +
+    Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*
+    Math.sin(dLon/2)**2
+
+  return R*(2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)))
 }
 
 </script>
