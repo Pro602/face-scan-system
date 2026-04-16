@@ -10,335 +10,176 @@
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
 <style>
-body{
-  font-family:sans-serif;
-  background:#0f172a;
-  color:white;
-  text-align:center;
-  padding:20px;
-}
-video{
-  width:100%;
-  max-width:420px;
-  border-radius:15px;
-  transform:scaleX(-1);
-}
-button{
-  padding:12px 25px;
-  font-size:16px;
-  border:none;
-  border-radius:30px;
-  background:#6366f1;
-  color:white;
-  margin-top:15px;
-}
-select{
-  padding:8px;
-  border-radius:8px;
-  margin:5px;
-}
-#status{ margin:10px; }
+body{font-family:sans-serif;background:#0f172a;color:white;text-align:center;padding:20px;}
+video{width:100%;max-width:420px;border-radius:15px;transform:scaleX(-1);}
+button{padding:12px 25px;font-size:16px;border:none;border-radius:30px;background:#6366f1;color:white;margin-top:15px;}
+#status{margin:10px;}
 </style>
 </head>
 
 <body>
 
-<h2>📷 สแกนเข้างาน</h2>
-
-<div id="status">กำลังโหลดระบบ...</div>
+<h2>📷 สแกนเข้างาน (กันโกง)</h2>
+<div id="status">กำลังโหลด...</div>
 
 <video id="video" autoplay muted playsinline></video>
 
 <br>
-
-<select id="typeSelect">
-  <option value="IN">เข้างาน (IN)</option>
-  <option value="OUT">ออกงาน (OUT)</option>
-</select>
-
-<select id="locationSelect">
-  <option value="">-- นอกสถานที่ --</option>
-</select>
-
-<br>
-
 <button onclick="startAll()">เริ่มสแกน</button>
 
 <script>
 
 // ================= CONFIG =================
-const API_URL = localStorage.getItem('gasApiUrl') || (typeof GAS_API_URL !== 'undefined' ? GAS_API_URL : "")
+const API_URL = localStorage.getItem('gasApiUrl') || GAS_API_URL
 
-if(!API_URL){
-  alert("❌ ยังไม่ได้ตั้งค่า API")
-}
-
-// ================= VAR =================
 const video = document.getElementById("video")
 const status = document.getElementById("status")
 
 let knownFaces = []
-let locationsData = []
 let scanInterval = null
 let isProcessing = false
 
-const MATCH_THRESHOLD = 0.45
+// 🔥 กันโกง
+let blinkDetected = false
+let moveDetected = false
+let lastDescriptor = null
 
-// 🔊 AUDIO
+// 🔊 เสียง
 let audioReady = false
 
+// ================= INIT =================
+window.onload = async () => {
+
+  const MODEL_URL="https://justadudewhohacks.github.io/face-api.js/models"
+
+  await Promise.all([
+    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+  ])
+
+  await loadFace()
+
+  status.innerText="พร้อมใช้งาน → กระพริบตา + ขยับหน้า"
+}
+
+// ================= AUDIO =================
 function unlockAudio(){
-  const audio = new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3")
-  audio.play().then(()=>{
-    audio.pause()
-    audio.currentTime = 0
-    audioReady = true
+  const a = new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3")
+  a.play().then(()=>{
+    a.pause()
+    audioReady=true
   }).catch(()=>{})
 }
 
-function playSound(type){
+function playSound(){
   if(!audioReady) return
-
-  let url = ""
-
-  if(type==="IN") url="https://www.soundjay.com/buttons/sounds/button-3.mp3"
-  else if(type==="OUT") url="https://www.soundjay.com/buttons/sounds/button-4.mp3"
-  else url="https://www.soundjay.com/buttons/sounds/button-10.mp3"
-
-  new Audio(url).play().catch(()=>{})
+  new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3").play()
 }
 
 function speak(text){
   if(!audioReady) return
-
-  const msg = new SpeechSynthesisUtterance(text)
-  msg.lang = "th-TH"
+  const msg=new SpeechSynthesisUtterance(text)
+  msg.lang="th-TH"
   speechSynthesis.speak(msg)
 }
 
-// ================= INIT =================
-window.onload = init
+// ================= LOAD =================
+async function loadFace(){
+  const res = await fetch(API_URL+"?action=faces&t="+Date.now())
+  const data = await res.json()
 
-async function init(){
-  try{
-
-    status.innerText="โหลด AI..."
-
-    const MODEL_URL="https://justadudewhohacks.github.io/face-api.js/models"
-
-    await Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-    ])
-
-    status.innerText="โหลดข้อมูล..."
-
-    await loadFaceDatabase()
-    await loadLocations()
-
-    status.innerText="พร้อมใช้งาน"
-
-  }catch(e){
-    console.error(e)
-    status.innerText="❌ โหลดไม่สำเร็จ"
-  }
+  knownFaces = data.map(u=>({
+    name:u.name,
+    studentId:u.studentId,
+    descriptor:new Float32Array(u.descriptor)
+  }))
 }
 
 // ================= START =================
 function startAll(){
   unlockAudio()
-  startCamera()
+
+  navigator.mediaDevices.getUserMedia({video:true})
+    .then(stream=>{
+      video.srcObject=stream
+      startScan()
+    })
 }
 
-// ================= LOAD FACE =================
-async function loadFaceDatabase(){
-  try{
-    const res = await fetch(API_URL+"?action=faces&t="+Date.now())
-    const data = await res.json()
+// ================= BLINK =================
+function detectBlink(landmarks){
 
-    knownFaces = data.map(u=>({
-      studentId:u.studentId,
-      name:u.name,
-      class:u.department,
-      descriptor:new Float32Array(u.descriptor)
-    }))
+  const eye = landmarks.getLeftEye()
+  const dist = Math.abs(eye[0].x - eye[3].x)
 
-    status.innerText="พนักงาน: "+knownFaces.length+" คน"
-
-  }catch(e){
-    status.innerText="❌ โหลดใบหน้าไม่ได้"
+  if(dist < 10){
+    blinkDetected = true
   }
 }
 
-// ================= LOAD LOCATION =================
-async function loadLocations(){
-  try{
-    const res = await fetch(API_URL+"?action=locations&t="+Date.now())
-    const data = await res.json()
-
-    locationsData = data
-
-    const select=document.getElementById("locationSelect")
-
-    data.forEach(loc=>{
-      const opt=document.createElement("option")
-      opt.value=loc.name
-      opt.textContent=loc.name
-      select.appendChild(opt)
-    })
-
-  }catch(e){}
-}
-
-// ================= CAMERA =================
-function startCamera(){
-  navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}})
-    .then(stream=>{
-      video.srcObject=stream
-      startScanLoop()
-    })
-    .catch(()=>{
-      alert("❌ เปิดกล้องไม่ได้")
-    })
-}
-
 // ================= SCAN =================
-function startScanLoop(){
+function startScan(){
 
-  if(scanInterval) clearInterval(scanInterval)
-
-  scanInterval=setInterval(async()=>{
+  scanInterval = setInterval(async()=>{
 
     if(isProcessing) return
 
-    const detection = await faceapi
+    const det = await faceapi
       .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
       .withFaceLandmarks()
       .withFaceDescriptor()
 
-    if(!detection) return
+    if(!det) return
 
-    const best = findBestMatch(detection.descriptor)
+    detectBlink(det.landmarks)
 
-    if(best && best.distance < MATCH_THRESHOLD){
-      isProcessing = true
-      clearInterval(scanInterval)
-      confirmAttendance(best)
+    // 🔥 ตรวจขยับหน้า
+    if(lastDescriptor){
+      const diff = faceapi.euclideanDistance(det.descriptor,lastDescriptor)
+      if(diff > 0.05){
+        moveDetected = true
+      }
     }
 
-  },800)
+    lastDescriptor = det.descriptor
+
+    // ❌ ยังไม่ผ่าน liveness
+    if(!blinkDetected || !moveDetected){
+      status.innerText="❗ กระพริบตา + ขยับหน้า"
+      return
+    }
+
+    const best = findMatch(det.descriptor)
+
+    if(best && best.distance < 0.45){
+
+      isProcessing = true
+      clearInterval(scanInterval)
+
+      playSound()
+      speak("สวัสดี "+best.name)
+
+      alert("✅ "+best.name)
+      location.reload()
+    }
+
+  },700)
 }
 
 // ================= MATCH =================
-function findBestMatch(query){
+function findMatch(query){
 
   let best=null
 
-  knownFaces.forEach(face=>{
-    const dist = faceapi.euclideanDistance(query, face.descriptor)
-    if(!best || dist < best.distance){
-      best={...face, distance:dist}
+  knownFaces.forEach(f=>{
+    const d = faceapi.euclideanDistance(query,f.descriptor)
+    if(!best || d<best.distance){
+      best={...f,distance:d}
     }
   })
 
   return best
-}
-
-// ================= GPS =================
-function getGPS(){
-  return new Promise(resolve=>{
-    navigator.geolocation.getCurrentPosition(
-      pos=>resolve({lat:pos.coords.latitude,lng:pos.coords.longitude}),
-      ()=>resolve({lat:"",lng:""}),
-      {enableHighAccuracy:true,timeout:15000}
-    )
-  })
-}
-
-// ================= DIST =================
-function getDistance(lat1, lon1, lat2, lon2){
-  const R = 6371e3
-  const toRad = x=>x*Math.PI/180
-
-  const dLat = toRad(lat2-lat1)
-  const dLon = toRad(lon2-lon1)
-
-  const a =
-    Math.sin(dLat/2)**2 +
-    Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*
-    Math.sin(dLon/2)**2
-
-  return R*(2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)))
-}
-
-// ================= CONFIRM =================
-async function confirmAttendance(user){
-
-  const type=document.getElementById("typeSelect").value
-  const locationName=document.getElementById("locationSelect").value || "นอกสถานที่"
-
-  const gps = await getGPS()
-
-  // ⭐ กัน GPS ว่าง
-  if(!gps.lat){
-    playSound("ERROR")
-    alert("❌ เปิด GPS ก่อน")
-    isProcessing=false
-    startScanLoop()
-    return
-  }
-
-  const locationText = gps.lat+","+gps.lng
-
-  const loc = locationsData.find(l=>l.name===locationName)
-
-  if(loc){
-    const dist = getDistance(gps.lat,gps.lng,loc.lat,loc.lng)
-
-    if(dist > (loc.radius || 300)){
-      playSound("ERROR")
-      speak("อยู่นอกพื้นที่")
-      alert("❌ อยู่นอกพื้นที่")
-      isProcessing=false
-      startScanLoop()
-      return
-    }
-  }
-
-  if(!confirm(`ยืนยัน ${type}\n${user.name}`)){
-    isProcessing=false
-    startScanLoop()
-    return
-  }
-
-  await fetch(API_URL,{
-    method:"POST",
-    mode:"no-cors",
-    headers:{
-      "Content-Type":"application/json"
-    },
-    body:JSON.stringify({
-      action:"attendance",
-      studentId:user.studentId,
-      name:user.name,
-      department:user.class,
-      type:type,
-      location:locationText,
-      locationName:locationName
-    })
-  })
-
-  playSound(type)
-
-  if(type==="IN"){
-    speak("สวัสดี "+user.name)
-  }else{
-    speak("ลาก่อน "+user.name)
-  }
-
-  alert("✅ บันทึกสำเร็จ")
-  location.reload()
 }
 
 </script>
