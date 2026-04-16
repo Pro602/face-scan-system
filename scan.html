@@ -67,82 +67,83 @@ select{
 <script>
 
 // ================= CONFIG =================
-const API_URL = localStorage.getItem('gasApiUrl') || (typeof GAS_API_URL !== 'undefined' ? GAS_API_URL : "")
+const API_URL = localStorage.getItem('gasApiUrl') || GAS_API_URL
 
-if(!API_URL){
-  alert("❌ ยังไม่ได้ตั้งค่า API")
-}
-
-// ================= VAR =================
 const video = document.getElementById("video")
 const status = document.getElementById("status")
 
 let knownFaces = []
 let locationsData = []
-let scanInterval = null
+
 let isProcessing = false
+let scanInterval = null
 
 const MATCH_THRESHOLD = 0.45
 
-// 🔊 AUDIO
+// ================= 🔥 LIVENESS =================
+let step = 0
+/*
+0 = หันซ้าย
+1 = หันขวา
+2 = กะพริบตา
+3 = ผ่าน
+*/
+
+let blinkCount = 0
+let eyeClosed = false
+
+function getStepText(){
+  if(step === 0) return "👉 กรุณาหันหน้าไปทางซ้าย"
+  if(step === 1) return "👉 กรุณาหันหน้าไปทางขวา"
+  if(step === 2) return "👉 กรุณากะพริบตา"
+  return "✅ ยืนยันตัวตนสำเร็จ"
+}
+
+// ================= AUDIO =================
 let audioReady = false
 
 function unlockAudio(){
-  const audio = new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3")
-  audio.play().then(()=>{
-    audio.pause()
-    audio.currentTime = 0
-    audioReady = true
+  const a=new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3")
+  a.play().then(()=>{
+    a.pause()
+    audioReady=true
   }).catch(()=>{})
-}
-
-function playSound(type){
-  if(!audioReady) return
-
-  let url = ""
-
-  if(type==="IN") url="https://www.soundjay.com/buttons/sounds/button-3.mp3"
-  else if(type==="OUT") url="https://www.soundjay.com/buttons/sounds/button-4.mp3"
-  else url="https://www.soundjay.com/buttons/sounds/button-10.mp3"
-
-  new Audio(url).play().catch(()=>{})
 }
 
 function speak(text){
   if(!audioReady) return
-
   const msg = new SpeechSynthesisUtterance(text)
   msg.lang = "th-TH"
   speechSynthesis.speak(msg)
+}
+
+function playSound(type){
+  if(!audioReady) return
+  let url=""
+  if(type==="OK") url="https://www.soundjay.com/buttons/sounds/button-3.mp3"
+  else url="https://www.soundjay.com/buttons/sounds/button-10.mp3"
+  new Audio(url).play().catch(()=>{})
 }
 
 // ================= INIT =================
 window.onload = init
 
 async function init(){
-  try{
 
-    status.innerText="โหลด AI..."
+  status.innerText="โหลด AI..."
 
-    const MODEL_URL="https://justadudewhohacks.github.io/face-api.js/models"
+  const MODEL_URL="https://justadudewhohacks.github.io/face-api.js/models"
 
-    await Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-    ])
+  await Promise.all([
+    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+  ])
 
-    status.innerText="โหลดข้อมูล..."
+  await loadFaces()
+  await loadLocations()
 
-    await loadFaceDatabase()
-    await loadLocations()
-
-    status.innerText="พร้อมใช้งาน"
-
-  }catch(e){
-    console.error(e)
-    status.innerText="❌ โหลดไม่สำเร็จ"
-  }
+  status.innerText="พร้อมใช้งาน"
 }
 
 // ================= START =================
@@ -151,94 +152,153 @@ function startAll(){
   startCamera()
 }
 
-// ================= LOAD FACE =================
-async function loadFaceDatabase(){
-  try{
-    const res = await fetch(API_URL+"?action=faces&t="+Date.now())
-    const data = await res.json()
+// ================= LOAD DATA =================
+async function loadFaces(){
+  const res = await fetch(API_URL+"?action=faces&t="+Date.now())
+  const data = await res.json()
 
-    knownFaces = data.map(u=>({
-      studentId:u.studentId,
-      name:u.name,
-      class:u.department,
-      descriptor:new Float32Array(u.descriptor)
-    }))
-
-    status.innerText="พนักงาน: "+knownFaces.length+" คน"
-
-  }catch(e){
-    status.innerText="❌ โหลดใบหน้าไม่ได้"
-  }
+  knownFaces = data.map(u=>({
+    studentId:u.studentId,
+    name:u.name,
+    class:u.department,
+    descriptor:new Float32Array(u.descriptor)
+  }))
 }
 
-// ================= LOAD LOCATION =================
 async function loadLocations(){
-  try{
-    const res = await fetch(API_URL+"?action=locations&t="+Date.now())
-    const data = await res.json()
+  const res = await fetch(API_URL+"?action=locations&t="+Date.now())
+  const data = await res.json()
 
-    locationsData = data
+  locationsData = data
 
-    const select=document.getElementById("locationSelect")
+  const select=document.getElementById("locationSelect")
 
-    data.forEach(loc=>{
-      const opt=document.createElement("option")
-      opt.value=loc.name
-      opt.textContent=loc.name
-      select.appendChild(opt)
-    })
-
-  }catch(e){}
+  data.forEach(l=>{
+    const opt=document.createElement("option")
+    opt.value=l.name
+    opt.textContent=l.name
+    select.appendChild(opt)
+  })
 }
 
 // ================= CAMERA =================
 function startCamera(){
-  navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}})
-    .then(stream=>{
-      video.srcObject=stream
-      startScanLoop()
-    })
-    .catch(()=>{
-      alert("❌ เปิดกล้องไม่ได้")
-    })
+  navigator.mediaDevices.getUserMedia({video:true})
+  .then(stream=>{
+    video.srcObject=stream
+    startScanLoop()
+  })
+}
+
+// ================= 🔥 ตรวจตา =================
+function getEAR(eye){
+  const a = dist(eye[1], eye[5])
+  const b = dist(eye[2], eye[4])
+  const c = dist(eye[0], eye[3])
+  return (a + b) / (2.0 * c)
+}
+
+function dist(p1,p2){
+  return Math.hypot(p1.x-p2.x, p1.y-p2.y)
 }
 
 // ================= SCAN =================
 function startScanLoop(){
 
-  if(scanInterval) clearInterval(scanInterval)
-
-  scanInterval=setInterval(async()=>{
+  scanInterval = setInterval(async()=>{
 
     if(isProcessing) return
 
-    const detection = await faceapi
+    const det = await faceapi
       .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
       .withFaceLandmarks()
       .withFaceDescriptor()
 
-    if(!detection) return
+    if(!det) return
 
-    const best = findBestMatch(detection.descriptor)
+    const landmarks = det.landmarks
 
-    if(best && best.distance < MATCH_THRESHOLD){
-      isProcessing = true
-      clearInterval(scanInterval)
-      confirmAttendance(best)
+    const nose = landmarks.getNose()[3].x
+    const box = det.detection.box
+
+    const faceCenter = box.x + box.width/2
+
+    const offset = nose - faceCenter
+
+    // ================= STEP 0: หันซ้าย =================
+    if(step === 0){
+      status.innerText = getStepText()
+
+      if(offset < -20){
+        step = 1
+        speak("ดีมาก ต่อไปหันขวา")
+      }
+      return
     }
 
-  },800)
+    // ================= STEP 1: หันขวา =================
+    if(step === 1){
+      status.innerText = getStepText()
+
+      if(offset > 20){
+        step = 2
+        speak("ดีมาก ต่อไปกะพริบตา")
+      }
+      return
+    }
+
+    // ================= STEP 2: กะพริบ =================
+    if(step === 2){
+
+      const leftEye = landmarks.getLeftEye()
+      const rightEye = landmarks.getRightEye()
+
+      const ear = (getEAR(leftEye) + getEAR(rightEye)) / 2
+
+      if(ear < 0.2 && !eyeClosed){
+        eyeClosed = true
+      }
+
+      if(ear > 0.25 && eyeClosed){
+        blinkCount++
+        eyeClosed = false
+      }
+
+      if(blinkCount >= 1){
+        step = 3
+        speak("ยืนยันตัวตนสำเร็จ")
+        playSound("OK")
+      }
+
+      status.innerText = getStepText()
+      return
+    }
+
+    // ================= STEP 3: MATCH =================
+    if(step === 3){
+
+      const best = findMatch(det.descriptor)
+
+      if(best && best.distance < MATCH_THRESHOLD){
+
+        isProcessing = true
+        clearInterval(scanInterval)
+
+        confirmAttendance(best)
+      }
+    }
+
+  },500)
 }
 
 // ================= MATCH =================
-function findBestMatch(query){
-
+function findMatch(desc){
   let best=null
 
-  knownFaces.forEach(face=>{
-    const dist = faceapi.euclideanDistance(query, face.descriptor)
-    if(!best || dist < best.distance){
-      best={...face, distance:dist}
+  knownFaces.forEach(f=>{
+    const d=faceapi.euclideanDistance(desc,f.descriptor)
+    if(!best || d<best.distance){
+      best={...f,distance:d}
     }
   })
 
@@ -247,11 +307,10 @@ function findBestMatch(query){
 
 // ================= GPS =================
 function getGPS(){
-  return new Promise(resolve=>{
+  return new Promise(res=>{
     navigator.geolocation.getCurrentPosition(
-      pos=>resolve({lat:pos.coords.latitude,lng:pos.coords.longitude}),
-      ()=>resolve({lat:"",lng:""}),
-      {enableHighAccuracy:true,timeout:15000}
+      p=>res({lat:p.coords.latitude,lng:p.coords.longitude}),
+      ()=>res(null)
     )
   })
 }
@@ -260,7 +319,6 @@ function getGPS(){
 function getDistance(lat1, lon1, lat2, lon2){
   const R = 6371e3
   const toRad = x=>x*Math.PI/180
-
   const dLat = toRad(lat2-lat1)
   const dLon = toRad(lon2-lon1)
 
@@ -272,7 +330,7 @@ function getDistance(lat1, lon1, lat2, lon2){
   return R*(2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)))
 }
 
-// ================= CONFIRM =================
+// ================= SAVE =================
 async function confirmAttendance(user){
 
   const type=document.getElementById("typeSelect").value
@@ -280,62 +338,35 @@ async function confirmAttendance(user){
 
   const gps = await getGPS()
 
-  // ⭐ กัน GPS ว่าง
-  if(!gps.lat){
-    playSound("ERROR")
+  if(!gps){
     alert("❌ เปิด GPS ก่อน")
-    isProcessing=false
-    startScanLoop()
     return
   }
-
-  const locationText = gps.lat+","+gps.lng
 
   const loc = locationsData.find(l=>l.name===locationName)
 
   if(loc){
     const dist = getDistance(gps.lat,gps.lng,loc.lat,loc.lng)
-
     if(dist > (loc.radius || 300)){
-      playSound("ERROR")
-      speak("อยู่นอกพื้นที่")
       alert("❌ อยู่นอกพื้นที่")
-      isProcessing=false
-      startScanLoop()
       return
     }
-  }
-
-  if(!confirm(`ยืนยัน ${type}\n${user.name}`)){
-    isProcessing=false
-    startScanLoop()
-    return
   }
 
   await fetch(API_URL,{
     method:"POST",
     mode:"no-cors",
-    headers:{
-      "Content-Type":"application/json"
-    },
+    headers:{ "Content-Type":"application/json" },
     body:JSON.stringify({
       action:"attendance",
       studentId:user.studentId,
       name:user.name,
       department:user.class,
       type:type,
-      location:locationText,
+      location:gps.lat+","+gps.lng,
       locationName:locationName
     })
   })
-
-  playSound(type)
-
-  if(type==="IN"){
-    speak("สวัสดี "+user.name)
-  }else{
-    speak("ลาก่อน "+user.name)
-  }
 
   alert("✅ บันทึกสำเร็จ")
   location.reload()
