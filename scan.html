@@ -91,12 +91,10 @@ function unlockAudio(){
 
 function playSound(type){
   if(!audioReady) return
-
   let url=""
   if(type==="IN") url="https://www.soundjay.com/buttons/sounds/button-3.mp3"
   else if(type==="OUT") url="https://www.soundjay.com/buttons/sounds/button-4.mp3"
   else url="https://www.soundjay.com/buttons/sounds/button-10.mp3"
-
   new Audio(url).play().catch(()=>{})
 }
 
@@ -107,16 +105,14 @@ function speak(text){
   speechSynthesis.speak(msg)
 }
 
-// ================= JSONP (แก้ CORS) =================
+// ================= JSONP =================
 function loadJSONP(url){
   return new Promise(resolve=>{
     const cb = "cb_" + Date.now()
-
     window[cb] = function(data){
       resolve(data)
       script.remove()
     }
-
     const script = document.createElement("script")
     script.src = url + "&callback=" + cb
     document.body.appendChild(script)
@@ -128,7 +124,6 @@ window.onload=init
 
 async function init(){
   try{
-
     status.innerText="โหลด AI..."
 
     const MODEL_URL="https://justadudewhohacks.github.io/face-api.js/models"
@@ -153,9 +148,7 @@ async function init(){
 // ================= LOAD FACE =================
 async function loadFaces(){
   try{
-
     status.innerText="โหลดพนักงาน..."
-
     const data = await loadJSONP(API_URL+"?action=faces")
 
     knownFaces = data.map(u=>({
@@ -168,7 +161,6 @@ async function loadFaces(){
     status.innerText="พนักงาน "+knownFaces.length+" คน"
 
   }catch(e){
-    console.error(e)
     status.innerText="❌ โหลดใบหน้าไม่ได้"
   }
 }
@@ -176,7 +168,6 @@ async function loadFaces(){
 // ================= LOAD LOCATION =================
 async function loadLocations(){
   try{
-
     const data = await loadJSONP(API_URL+"?action=locations")
 
     locations = data
@@ -199,15 +190,13 @@ async function loadLocations(){
 function startAll(){
   unlockAudio()
 
-  navigator.mediaDevices.getUserMedia({video:true})
+  navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}})
   .then(stream=>{
     video.srcObject=stream
     scanning=true
     scanLoop()
   })
-  .catch(()=>{
-    alert("❌ เปิดกล้องไม่ได้")
-  })
+  .catch(()=> alert("❌ เปิดกล้องไม่ได้"))
 }
 
 // ================= SCAN =================
@@ -221,27 +210,29 @@ async function scanLoop(){
   }
 
   const det = await faceapi
-    .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
+    .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions({
+      inputSize:320,
+      scoreThreshold:0.5
+    }))
     .withFaceLandmarks()
     .withFaceDescriptor()
 
   if(det){
 
-    // 🔥 กันรูปถ่าย (ต้องขยับจริง)
+    // 🔥 กันรูปถ่าย (ปรับให้ไม่ฆ่าคนจริง)
     if(lastDescriptor){
       const diff = faceapi.euclideanDistance(det.descriptor,lastDescriptor)
 
-      if(diff < 0.02){
+      if(diff < 0.008){
         moveCount++
       }else{
         moveCount=0
       }
 
-      if(moveCount > 5){
+      if(moveCount > 10){
         status.innerText="❌ ห้ามใช้รูปถ่าย"
         playSound("ERROR")
-        requestAnimationFrame(scanLoop)
-        return
+        return requestAnimationFrame(scanLoop)
       }
     }
 
@@ -249,7 +240,12 @@ async function scanLoop(){
 
     const best = findMatch(det.descriptor)
 
-    if(best && best.distance < 0.45){
+    // 🔥 debug distance
+    if(best){
+      status.innerText = best.name + " ("+best.distance.toFixed(3)+")"
+    }
+
+    if(best && best.distance < 0.55){
       isProcessing=true
       await confirmAttendance(best)
       isProcessing=false
@@ -262,14 +258,12 @@ async function scanLoop(){
 // ================= MATCH =================
 function findMatch(desc){
   let best=null
-
   knownFaces.forEach(f=>{
     const d=faceapi.euclideanDistance(desc,f.descriptor)
     if(!best || d<best.distance){
       best={...f,distance:d}
     }
   })
-
   return best
 }
 
@@ -288,7 +282,6 @@ function getGPS(){
 function distance(lat1,lon1,lat2,lon2){
   const R=6371e3
   const toRad=x=>x*Math.PI/180
-
   const dLat=toRad(lat2-lat1)
   const dLon=toRad(lon2-lon1)
 
@@ -313,24 +306,19 @@ async function confirmAttendance(user){
     return
   }
 
-  // ================= LOCATION CHECK =================
   if(locName !== "OUTSIDE"){
-
     const loc = locations.find(l=>l.name===locName)
 
     if(loc){
-
       const dist = distance(gps.lat,gps.lng,loc.lat,loc.lng)
 
       if(dist > (loc.radius || 300)){
-
         if(lastAlertLocation !== locName){
           lastAlertLocation = locName
           playSound("ERROR")
           speak("อยู่นอกพื้นที่")
           alert("❌ อยู่นอกพื้นที่")
         }
-
         return
       }
     }
@@ -338,7 +326,6 @@ async function confirmAttendance(user){
 
   lastAlertLocation=""
 
-  // ================= SAVE =================
   await fetch(API_URL,{
     method:"POST",
     mode:"no-cors",
@@ -350,7 +337,7 @@ async function confirmAttendance(user){
       department:user.class,
       type:type,
       location:gps.lat+","+gps.lng,
-      locationName:(locName==="OUTSIDE" ? "นอกสถานที่" : locName)
+      locationName:(locName==="OUTSIDE"?"นอกสถานที่":locName)
     })
   })
 
