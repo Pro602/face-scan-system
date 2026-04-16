@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+F<!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="UTF-8">
@@ -79,7 +79,7 @@ let hasSaved = false   // ⭐ กันบันทึกซ้ำ
 let lastLocationAlert = ""
 let cooldown = false   // ⭐ กันยิงรัว
 
-const MATCH_THRESHOLD = 0.45
+const MATCH_THRESHOLD = 0.55
 
 // ================= AUDIO =================
 let audioReady=false
@@ -174,31 +174,58 @@ function startAll(){
 // ================= SCAN =================
 async function runScan(){
 
-  if(isProcessing || hasSaved || cooldown) return
+  try{
 
-  const det = await faceapi
-    .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
-    .withFaceLandmarks()
-    .withFaceDescriptor()
+    if(!video.srcObject){
+      requestAnimationFrame(runScan)
+      return
+    }
 
-  if(!det){
-    requestAnimationFrame(runScan)
-    return
-  }
+    if(isProcessing || hasSaved){
+      requestAnimationFrame(runScan)
+      return
+    }
 
-  const best = findMatch(det.descriptor)
+    const det = await faceapi
+      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({
+        inputSize: 320,
+        scoreThreshold: 0.3
+      }))
+      .withFaceLandmarks()
+      .withFaceDescriptor()
 
-  if(best && best.distance < MATCH_THRESHOLD){
+    if(!det){
+      status.innerText="❌ ไม่พบใบหน้า"
+      requestAnimationFrame(runScan)
+      return
+    }
 
-    isProcessing=true
+    status.innerText="🔍 พบใบหน้า"
 
-    // 🔥 สุ่ม action (เร็วกว่า)
-    const action = randomAction()
-    await doActionCheck(action)
+    const best = findMatch(det.descriptor)
 
-    await confirmAttendance(best)
+    if(best){
+      status.innerText = "📊 similarity: " + best.distance.toFixed(3)
+    }
 
-    isProcessing=false
+    // ⭐ ปรับ threshold
+    if(best && best.distance < 0.55){
+
+      status.innerText="✅ พบผู้ใช้: " + best.name
+
+      isProcessing=true
+
+      try{
+        await confirmAttendance(best)
+      }catch(e){
+        console.log(e)
+      }
+
+      isProcessing=false
+    }
+
+  }catch(err){
+    console.error(err)
   }
 
   requestAnimationFrame(runScan)
