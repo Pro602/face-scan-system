@@ -80,57 +80,53 @@ let scanInterval = null
 
 const MATCH_THRESHOLD = 0.45
 
-// ================= 🔥 LIVENESS =================
-let step = 0
-/*
-0 = หันซ้าย
-1 = หันขวา
-2 = กะพริบตา
-3 = ผ่าน
-*/
+// ================= 🔥 RANDOM CHALLENGE =================
+const challenges = ["LEFT","RIGHT","UPDOWN","MOUTH"]
+let currentChallenge = null
+let challengePassed = false
 
-let blinkCount = 0
-let eyeClosed = false
+function randomChallenge(){
+  currentChallenge = challenges[Math.floor(Math.random()*challenges.length)]
+  challengePassed = false
 
-function getStepText(){
-  if(step === 0) return "👉 กรุณาหันหน้าไปทางซ้าย"
-  if(step === 1) return "👉 กรุณาหันหน้าไปทางขวา"
-  if(step === 2) return "👉 กรุณากะพริบตา"
-  return "✅ ยืนยันตัวตนสำเร็จ"
+  if(currentChallenge==="LEFT") speak("กรุณาหันซ้าย")
+  if(currentChallenge==="RIGHT") speak("กรุณาหันขวา")
+  if(currentChallenge==="UPDOWN") speak("กรุณาพยักหน้า")
+  if(currentChallenge==="MOUTH") speak("กรุณาอ้าปาก")
+}
+
+function getChallengeText(){
+  if(currentChallenge==="LEFT") return "👉 หันซ้าย"
+  if(currentChallenge==="RIGHT") return "👉 หันขวา"
+  if(currentChallenge==="UPDOWN") return "👉 พยักหน้า"
+  if(currentChallenge==="MOUTH") return "👉 อ้าปาก"
+  return ""
 }
 
 // ================= AUDIO =================
-let audioReady = false
+let audioReady=false
 
 function unlockAudio(){
   const a=new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3")
-  a.play().then(()=>{
-    a.pause()
-    audioReady=true
-  }).catch(()=>{})
+  a.play().then(()=>{a.pause();audioReady=true}).catch(()=>{})
 }
 
 function speak(text){
   if(!audioReady) return
-  const msg = new SpeechSynthesisUtterance(text)
-  msg.lang = "th-TH"
+  const msg=new SpeechSynthesisUtterance(text)
+  msg.lang="th-TH"
   speechSynthesis.speak(msg)
 }
 
-function playSound(type){
+function playOK(){
   if(!audioReady) return
-  let url=""
-  if(type==="OK") url="https://www.soundjay.com/buttons/sounds/button-3.mp3"
-  else url="https://www.soundjay.com/buttons/sounds/button-10.mp3"
-  new Audio(url).play().catch(()=>{})
+  new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3").play()
 }
 
 // ================= INIT =================
-window.onload = init
+window.onload=init
 
 async function init(){
-
-  status.innerText="โหลด AI..."
 
   const MODEL_URL="https://justadudewhohacks.github.io/face-api.js/models"
 
@@ -149,15 +145,16 @@ async function init(){
 // ================= START =================
 function startAll(){
   unlockAudio()
+  randomChallenge()
   startCamera()
 }
 
-// ================= LOAD DATA =================
+// ================= LOAD =================
 async function loadFaces(){
-  const res = await fetch(API_URL+"?action=faces&t="+Date.now())
-  const data = await res.json()
+  const res=await fetch(API_URL+"?action=faces&t="+Date.now())
+  const data=await res.json()
 
-  knownFaces = data.map(u=>({
+  knownFaces=data.map(u=>({
     studentId:u.studentId,
     name:u.name,
     class:u.department,
@@ -166,10 +163,10 @@ async function loadFaces(){
 }
 
 async function loadLocations(){
-  const res = await fetch(API_URL+"?action=locations&t="+Date.now())
-  const data = await res.json()
+  const res=await fetch(API_URL+"?action=locations&t="+Date.now())
+  const data=await res.json()
 
-  locationsData = data
+  locationsData=data
 
   const select=document.getElementById("locationSelect")
 
@@ -190,22 +187,10 @@ function startCamera(){
   })
 }
 
-// ================= 🔥 ตรวจตา =================
-function getEAR(eye){
-  const a = dist(eye[1], eye[5])
-  const b = dist(eye[2], eye[4])
-  const c = dist(eye[0], eye[3])
-  return (a + b) / (2.0 * c)
-}
-
-function dist(p1,p2){
-  return Math.hypot(p1.x-p2.x, p1.y-p2.y)
-}
-
 // ================= SCAN =================
 function startScanLoop(){
 
-  scanInterval = setInterval(async()=>{
+  scanInterval=setInterval(async()=>{
 
     if(isProcessing) return
 
@@ -216,92 +201,66 @@ function startScanLoop(){
 
     if(!det) return
 
-    const landmarks = det.landmarks
-
-    const nose = landmarks.getNose()[3].x
+    const lm = det.landmarks
+    const nose = lm.getNose()[3]
     const box = det.detection.box
 
-    const faceCenter = box.x + box.width/2
+    const centerX = box.x + box.width/2
+    const offsetX = nose.x - centerX
 
-    const offset = nose - faceCenter
+    const jaw = lm.getJawOutline()
+    const mouthOpen = jaw[8].y - lm.getNose()[6].y
 
-    // ================= STEP 0: หันซ้าย =================
-    if(step === 0){
-      status.innerText = getStepText()
+    status.innerText = getChallengeText()
 
-      if(offset < -20){
-        step = 1
-        speak("ดีมาก ต่อไปหันขวา")
-      }
-      return
+    // ================= CHECK =================
+    if(currentChallenge==="LEFT" && offsetX < -20){
+      challengePassed = true
     }
 
-    // ================= STEP 1: หันขวา =================
-    if(step === 1){
-      status.innerText = getStepText()
-
-      if(offset > 20){
-        step = 2
-        speak("ดีมาก ต่อไปกะพริบตา")
-      }
-      return
+    if(currentChallenge==="RIGHT" && offsetX > 20){
+      challengePassed = true
     }
 
-    // ================= STEP 2: กะพริบ =================
-    if(step === 2){
-
-      const leftEye = landmarks.getLeftEye()
-      const rightEye = landmarks.getRightEye()
-
-      const ear = (getEAR(leftEye) + getEAR(rightEye)) / 2
-
-      if(ear < 0.2 && !eyeClosed){
-        eyeClosed = true
+    if(currentChallenge==="UPDOWN"){
+      if(nose.y > box.y + box.height*0.6){
+        challengePassed = true
       }
-
-      if(ear > 0.25 && eyeClosed){
-        blinkCount++
-        eyeClosed = false
-      }
-
-      if(blinkCount >= 1){
-        step = 3
-        speak("ยืนยันตัวตนสำเร็จ")
-        playSound("OK")
-      }
-
-      status.innerText = getStepText()
-      return
     }
 
-    // ================= STEP 3: MATCH =================
-    if(step === 3){
+    if(currentChallenge==="MOUTH"){
+      if(mouthOpen > 25){
+        challengePassed = true
+      }
+    }
+
+    // ================= PASS =================
+    if(challengePassed){
 
       const best = findMatch(det.descriptor)
 
       if(best && best.distance < MATCH_THRESHOLD){
 
-        isProcessing = true
+        isProcessing=true
         clearInterval(scanInterval)
 
+        playOK()
         confirmAttendance(best)
       }
     }
 
-  },500)
+  },400)
 }
 
 // ================= MATCH =================
 function findMatch(desc){
   let best=null
-
   knownFaces.forEach(f=>{
     const d=faceapi.euclideanDistance(desc,f.descriptor)
     if(!best || d<best.distance){
       best={...f,distance:d}
     }
   })
-
   return best
 }
 
@@ -317,13 +276,12 @@ function getGPS(){
 
 // ================= DIST =================
 function getDistance(lat1, lon1, lat2, lon2){
-  const R = 6371e3
-  const toRad = x=>x*Math.PI/180
-  const dLat = toRad(lat2-lat1)
-  const dLon = toRad(lon2-lon1)
+  const R=6371e3
+  const toRad=x=>x*Math.PI/180
+  const dLat=toRad(lat2-lat1)
+  const dLon=toRad(lon2-lon1)
 
-  const a =
-    Math.sin(dLat/2)**2 +
+  const a=Math.sin(dLat/2)**2+
     Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*
     Math.sin(dLon/2)**2
 
@@ -373,6 +331,5 @@ async function confirmAttendance(user){
 }
 
 </script>
-
 </body>
 </html>
