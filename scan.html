@@ -37,7 +37,7 @@ select{
   border-radius:8px;
   margin:5px;
 }
-#status{ margin:10px; }
+#status{ margin:10px; font-size:18px; }
 </style>
 </head>
 
@@ -67,11 +67,7 @@ select{
 <script>
 
 // ================= CONFIG =================
-const API_URL = localStorage.getItem('gasApiUrl') || (typeof GAS_API_URL !== 'undefined' ? GAS_API_URL : "")
-
-if(!API_URL){
-  alert("❌ ยังไม่ได้ตั้งค่า API")
-}
+const API_URL = localStorage.getItem('gasApiUrl') || GAS_API_URL
 
 // ================= VAR =================
 const video = document.getElementById("video")
@@ -82,9 +78,13 @@ let locationsData = []
 let scanInterval = null
 let isProcessing = false
 
+// 🔥 เพิ่มระบบกันรูป
+let lastDescriptor = null
+let movementScore = 0
+
 const MATCH_THRESHOLD = 0.45
 
-// 🔊 AUDIO
+// ================= AUDIO =================
 let audioReady = false
 
 function unlockAudio(){
@@ -93,7 +93,7 @@ function unlockAudio(){
     audio.pause()
     audio.currentTime = 0
     audioReady = true
-  }).catch(()=>{})
+  })
 }
 
 function playSound(type){
@@ -105,12 +105,11 @@ function playSound(type){
   else if(type==="OUT") url="https://www.soundjay.com/buttons/sounds/button-4.mp3"
   else url="https://www.soundjay.com/buttons/sounds/button-10.mp3"
 
-  new Audio(url).play().catch(()=>{})
+  new Audio(url).play()
 }
 
 function speak(text){
   if(!audioReady) return
-
   const msg = new SpeechSynthesisUtterance(text)
   msg.lang = "th-TH"
   speechSynthesis.speak(msg)
@@ -120,29 +119,18 @@ function speak(text){
 window.onload = init
 
 async function init(){
-  try{
+  const MODEL_URL="https://justadudewhohacks.github.io/face-api.js/models"
 
-    status.innerText="โหลด AI..."
+  await Promise.all([
+    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+  ])
 
-    const MODEL_URL="https://justadudewhohacks.github.io/face-api.js/models"
+  await loadFaceDatabase()
+  await loadLocations()
 
-    await Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-    ])
-
-    status.innerText="โหลดข้อมูล..."
-
-    await loadFaceDatabase()
-    await loadLocations()
-
-    status.innerText="พร้อมใช้งาน"
-
-  }catch(e){
-    console.error(e)
-    status.innerText="❌ โหลดไม่สำเร็จ"
-  }
+  status.innerText="พร้อมใช้งาน"
 }
 
 // ================= START =================
@@ -153,42 +141,34 @@ function startAll(){
 
 // ================= LOAD FACE =================
 async function loadFaceDatabase(){
-  try{
-    const res = await fetch(API_URL+"?action=faces&t="+Date.now())
-    const data = await res.json()
+  const res = await fetch(API_URL+"?action=faces&t="+Date.now())
+  const data = await res.json()
 
-    knownFaces = data.map(u=>({
-      studentId:u.studentId,
-      name:u.name,
-      class:u.department,
-      descriptor:new Float32Array(u.descriptor)
-    }))
+  knownFaces = data.map(u=>({
+    studentId:u.studentId,
+    name:u.name,
+    class:u.department,
+    descriptor:new Float32Array(u.descriptor)
+  }))
 
-    status.innerText="พนักงาน: "+knownFaces.length+" คน"
-
-  }catch(e){
-    status.innerText="❌ โหลดใบหน้าไม่ได้"
-  }
+  status.innerText="พนักงาน: "+knownFaces.length+" คน"
 }
 
 // ================= LOAD LOCATION =================
 async function loadLocations(){
-  try{
-    const res = await fetch(API_URL+"?action=locations&t="+Date.now())
-    const data = await res.json()
+  const res = await fetch(API_URL+"?action=locations")
+  const data = await res.json()
 
-    locationsData = data
+  locationsData = data
 
-    const select=document.getElementById("locationSelect")
+  const select=document.getElementById("locationSelect")
 
-    data.forEach(loc=>{
-      const opt=document.createElement("option")
-      opt.value=loc.name
-      opt.textContent=loc.name
-      select.appendChild(opt)
-    })
-
-  }catch(e){}
+  data.forEach(loc=>{
+    const opt=document.createElement("option")
+    opt.value=loc.name
+    opt.textContent=loc.name
+    select.appendChild(opt)
+  })
 }
 
 // ================= CAMERA =================
@@ -197,9 +177,6 @@ function startCamera(){
     .then(stream=>{
       video.srcObject=stream
       startScanLoop()
-    })
-    .catch(()=>{
-      alert("❌ เปิดกล้องไม่ได้")
     })
 }
 
@@ -219,6 +196,34 @@ function startScanLoop(){
 
     if(!detection) return
 
+    // =========================
+    // 🔥 กัน "รูปถ่าย"
+    // =========================
+    if(lastDescriptor){
+      const diff = faceapi.euclideanDistance(detection.descriptor, lastDescriptor)
+
+      if(diff < 0.03){
+        movementScore--
+      }else{
+        movementScore++
+      }
+
+      // ถ้าไม่ขยับ = ปฏิเสธ
+      if(movementScore < -3){
+        status.innerText="❌ กรุณาขยับหน้า (ห้ามใช้รูป)"
+        playSound("ERROR")
+        return
+      }
+    }
+
+    lastDescriptor = detection.descriptor
+
+    // ต้องมี movement ก่อนถึงผ่าน
+    if(movementScore < 2){
+      status.innerText="➡️ กรุณาขยับหน้าเล็กน้อย"
+      return
+    }
+
     const best = findBestMatch(detection.descriptor)
 
     if(best && best.distance < MATCH_THRESHOLD){
@@ -227,12 +232,11 @@ function startScanLoop(){
       confirmAttendance(best)
     }
 
-  },800)
+  },500) // 🔥 เร็วขึ้น
 }
 
 // ================= MATCH =================
 function findBestMatch(query){
-
   let best=null
 
   knownFaces.forEach(face=>{
@@ -245,66 +249,11 @@ function findBestMatch(query){
   return best
 }
 
-// ================= GPS =================
-function getGPS(){
-  return new Promise(resolve=>{
-    navigator.geolocation.getCurrentPosition(
-      pos=>resolve({lat:pos.coords.latitude,lng:pos.coords.longitude}),
-      ()=>resolve({lat:"",lng:""}),
-      {enableHighAccuracy:true,timeout:15000}
-    )
-  })
-}
-
-// ================= DIST =================
-function getDistance(lat1, lon1, lat2, lon2){
-  const R = 6371e3
-  const toRad = x=>x*Math.PI/180
-
-  const dLat = toRad(lat2-lat1)
-  const dLon = toRad(lon2-lon1)
-
-  const a =
-    Math.sin(dLat/2)**2 +
-    Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*
-    Math.sin(dLon/2)**2
-
-  return R*(2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)))
-}
-
 // ================= CONFIRM =================
 async function confirmAttendance(user){
 
   const type=document.getElementById("typeSelect").value
   const locationName=document.getElementById("locationSelect").value || "นอกสถานที่"
-
-  const gps = await getGPS()
-
-  // ⭐ กัน GPS ว่าง
-  if(!gps.lat){
-    playSound("ERROR")
-    alert("❌ เปิด GPS ก่อน")
-    isProcessing=false
-    startScanLoop()
-    return
-  }
-
-  const locationText = gps.lat+","+gps.lng
-
-  const loc = locationsData.find(l=>l.name===locationName)
-
-  if(loc){
-    const dist = getDistance(gps.lat,gps.lng,loc.lat,loc.lng)
-
-    if(dist > (loc.radius || 300)){
-      playSound("ERROR")
-      speak("อยู่นอกพื้นที่")
-      alert("❌ อยู่นอกพื้นที่")
-      isProcessing=false
-      startScanLoop()
-      return
-    }
-  }
 
   if(!confirm(`ยืนยัน ${type}\n${user.name}`)){
     isProcessing=false
@@ -315,16 +264,13 @@ async function confirmAttendance(user){
   await fetch(API_URL,{
     method:"POST",
     mode:"no-cors",
-    headers:{
-      "Content-Type":"application/json"
-    },
+    headers:{ "Content-Type":"application/json" },
     body:JSON.stringify({
       action:"attendance",
       studentId:user.studentId,
       name:user.name,
       department:user.class,
       type:type,
-      location:locationText,
       locationName:locationName
     })
   })
