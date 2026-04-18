@@ -330,7 +330,7 @@ async function confirmAttendance(user){
     return
   }
 
-await fetch(API_URL,{
+const res = await fetch(API_URL,{
   method:"POST",
   headers:{ "Content-Type":"application/json" },
   body:JSON.stringify({
@@ -342,7 +342,16 @@ await fetch(API_URL,{
     location:locationText,
     locationName:locationName
   })
-})
+});
+
+const result = await res.json();
+
+if(result.success){
+  alert("✅ บันทึกสำเร็จ");
+}else{
+  alert("❌ บันทึกไม่สำเร็จ");
+  console.error(result);
+}
 
   playSound(type)
 
