@@ -308,60 +308,69 @@ async function confirmAttendance(user){
 
   const locationText = gps.lat + "," + gps.lng
 
+  const loc = locationsData.find(l=>l.name===locationName)
+
+  if(loc){
+    const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng)
+
+    if(dist > (loc.radius || 300)){
+      playSound("ERROR")
+      speak("อยู่นอกพื้นที่")
+
+      alert("❌ อยู่นอกพื้นที่")
+      isProcessing=false
+      startScanLoop()
+      return
+    }
+  }
+
   if(!confirm(`ยืนยัน ${type}\n${user.name}`)){
     isProcessing=false
     startScanLoop()
     return
   }
 
-// STEP 1
-await fetch(API_URL,{
-  method:"POST",
-  mode:"no-cors",
-  headers:{ "Content-Type":"application/json" },
-  body:JSON.stringify({
-    action:"attendance",
-    studentId:user.studentId,
-    name:user.name,
-    department:user.class,
-    type:type,
-    location:locationText,
-    locationName:locationName
-  })
-});
+  // 🔥 เพิ่มตรงนี้
+  const imageBase64 = captureImage();
 
-// delay
-await new Promise(r => setTimeout(r,1000));
+  await fetch(API_URL,{
+    method:"POST",
+    mode:"no-cors",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({
+      action:"attendance",
+      studentId:user.studentId,
+      name:user.name,
+      department:user.class,
+      type:type,
+      location:locationText,
+      locationName:locationName,
+      //image:imageBase64
+    })
+  });
 
-// STEP 2
-await fetch(API_URL,{
-  method:"POST",
-  mode:"no-cors",
-  headers:{ "Content-Type":"application/json" },
-  body:JSON.stringify({
-    action:"uploadImage",
-    studentId:user.studentId,
-    image:imageBase64
-  })
-});
+  playSound(type)
 
-// 🔥 แสดงผลทันที
-alert("✅ บันทึกสำเร็จ");
-location.reload();
-  },1500);
+  if(type==="IN"){
+    speak("สวัสดี "+user.name)
+  }else{
+    speak("ลาก่อน "+user.name)
+  }
+
+  alert("✅ บันทึกสำเร็จ")
+  location.reload()
 }
-
-
-// ===== capture รูป =====
+  
 function captureImage() {
   const canvas = document.createElement("canvas");
-  canvas.width = 120;
+
+  canvas.width = 120;   // 🔥 ลดลงอีก
   canvas.height = 90;
 
   const ctx = canvas.getContext("2d");
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  return canvas.toDataURL("image/jpeg", 0.3);
+  return canvas.toDataURL("image/jpeg", 0.2); // 🔥 บีบหนัก
 }
 </script>
 
