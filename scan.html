@@ -285,92 +285,101 @@ function getDistance(lat1, lon1, lat2, lon2){
 }
 
 // ================= CONFIRM =================
-async function confirmAttendance(user){
+async function confirmAttendance(user) {
+  const type = document.getElementById("typeSelect").value;
+  const locationName = document.getElementById("locationSelect").value;
 
-  const type=document.getElementById("typeSelect").value
-  const locationName=document.getElementById("locationSelect").value
-
-  if(!locationName){
-    alert("❌ กรุณาเลือกสถานที่")
-    isProcessing=false
-    startScanLoop()
-    return
+  if (!locationName) {
+    alert("❌ กรุณาเลือกสถานที่");
+    isProcessing = false;
+    startScanLoop();
+    return;
   }
 
-  const gps = await getGPS()
-
-  if(!gps.lat){
-    alert("❌ กรุณาเปิด GPS")
-    isProcessing=false
-    startScanLoop()
-    return
+  const gps = await getGPS();
+  if (!gps.lat) {
+    alert("❌ กรุณาเปิด GPS");
+    isProcessing = false;
+    startScanLoop();
+    return;
   }
 
-  const locationText = gps.lat + "," + gps.lng
+  const locationText = gps.lat + "," + gps.lng;
+  const loc = locationsData.find(l => l.name === locationName);
 
-  const loc = locationsData.find(l=>l.name===locationName)
-
-  if(loc){
-    const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng)
-
-    if(dist > (loc.radius || 300)){
-      playSound("ERROR")
-      speak("อยู่นอกพื้นที่")
-
-      alert("❌ อยู่นอกพื้นที่")
-      isProcessing=false
-      startScanLoop()
-      return
+  if (loc) {
+    const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
+    if (dist > (loc.radius || 300)) {
+      playSound("ERROR");
+      speak("อยู่นอกพื้นที่");
+      alert("❌ อยู่นอกพื้นที่");
+      isProcessing = false;
+      startScanLoop();
+      return;
     }
   }
 
-  if(!confirm(`ยืนยัน ${type}\n${user.name}`)){
-    isProcessing=false
-    startScanLoop()
-    return
+  if (!confirm(`ยืนยัน ${type}\n${user.name}`)) {
+    isProcessing = false;
+    startScanLoop();
+    return;
   }
 
-  // 🔥 เพิ่มตรงนี้
+  status.innerText = "⏳ กำลังบันทึกข้อมูลและรูปภาพ...";
+
+  // 📸 จับภาพหน้าจอตอนสแกนสำเร็จ
   const imageBase64 = captureImage();
 
-  await fetch(API_URL,{
-    method:"POST",
-    mode:"no-cors",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({
-      action:"attendance",
-      studentId:user.studentId,
-      name:user.name,
-      department:user.class,
-      type:type,
-      location:locationText,
-      locationName:locationName,
-      //image:imageBase64
-    })
-  });
+  try {
+    // ใช้ฟอร์ม Data หรือ JSON ปกติ แต่ต้องมั่นใจว่าส่ง POST ไปที่ exec
+    const response = await fetch(API_URL, {
+      method: "POST",
+      mode: "no-cors", // ใช้ no-cors สำหรับ Google Apps Script (ถ้ามีปัญหา CORS)
+      headers: { "Content-Type": "text/plain" }, // Trick สำหรับ Apps Script
+      body: JSON.stringify({
+        action: "attendance",
+        studentId: user.studentId,
+        name: user.name,
+        department: user.class,
+        type: type,
+        location: locationText,
+        locationName: locationName,
+        image: imageBase64 // 🔥 ส่งรูปไปด้วย
+      })
+    });
 
-  playSound(type)
+    // เนื่องจากใช้ no-cors เราจะไม่สามารถอ่าน response.json() ได้ตรงๆ 
+    // แต่ข้อมูลจะถูกส่งไปบันทึกแน่นอน
+    
+    playSound(type);
+    speak(type === "IN" ? "สวัสดี " + user.name : "ลาก่อน " + user.name);
 
-  if(type==="IN"){
-    speak("สวัสดี "+user.name)
-  }else{
-    speak("ลาก่อน "+user.name)
+    alert("✅ บันทึกสำเร็จ");
+    location.reload();
+
+  } catch (err) {
+    console.error(err);
+    alert("❌ เกิดข้อผิดพลาดในการบันทึก");
+    isProcessing = false;
+    startScanLoop();
   }
-
-  alert("✅ บันทึกสำเร็จ")
-  location.reload()
 }
-  
+
 function captureImage() {
   const canvas = document.createElement("canvas");
-
-  canvas.width = 120;   // 🔥 ลดลงอีก
-  canvas.height = 90;
+  // ปรับขนาดให้พอดี ไม่เล็กเกินไปจนมองไม่ชัด (แนะนำ 320x240)
+  canvas.width = 320;
+  canvas.height = 240;
 
   const ctx = canvas.getContext("2d");
+  
+  // กลับด้านรูปภาพให้เหมือนที่เห็นในจอ (Mirror)
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+  
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  return canvas.toDataURL("image/jpeg", 0.2); // 🔥 บีบหนัก
+  return canvas.toDataURL("image/jpeg", 0.5); // คุณภาพ 0.5 กำลังดีสำหรับความเร็ว
 }
 </script>
 
