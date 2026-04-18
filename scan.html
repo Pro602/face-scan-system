@@ -317,7 +317,7 @@ async function confirmAttendance(user){
   // ===== STEP 1: บันทึก attendance =====
   await fetch(API_URL,{
     method:"POST",
-    mode:"no-cors",
+   mode:"cors",   // 🔥 แก้ตรงนี้
     headers:{ "Content-Type":"application/json" },
     body:JSON.stringify({
       action:"attendance",
@@ -338,7 +338,7 @@ async function confirmAttendance(user){
 
   await fetch(API_URL,{
     method:"POST",
-    mode:"no-cors",
+    mode:"cors",   // 🔥 แก้ตรงนี้
     headers:{ "Content-Type":"application/json" },
     body:JSON.stringify({
       action:"uploadImage",
