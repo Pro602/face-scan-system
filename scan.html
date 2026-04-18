@@ -330,34 +330,24 @@ async function confirmAttendance(user){
     return
   }
 
-await fetch(API_URL,{
-  method:"POST",
-  mode:"no-cors", // 🔥 ใช้อันนี้
-  headers:{ "Content-Type":"application/json" },
-  body:JSON.stringify({
-    action:"attendance",
-    studentId:user.studentId,
-    name:user.name,
-    department:user.class,
-    type:type,
-    location:locationText,
-    locationName:locationName,
-    image:imageBase64   // 🔥 เพิ่มตรงนี้
-  })
-});
+  // 🔥 เพิ่มตรงนี้
+  const imageBase64 = captureImage();
 
-// 🔥 แสดงผลเลย (เพราะอ่าน response ไม่ได้อยู่แล้ว)
-alert("✅ บันทึกสำเร็จ");
-location.reload();
-
-const result = await res.json();
-
-if(result.success){
-  alert("✅ บันทึกสำเร็จ");
-}else{
-  alert("❌ บันทึกไม่สำเร็จ");
-  console.error(result);
-}
+  await fetch(API_URL,{
+    method:"POST",
+    mode:"no-cors",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({
+      action:"attendance",
+      studentId:user.studentId,
+      name:user.name,
+      department:user.class,
+      type:type,
+      location:locationText,
+      locationName:locationName,
+      image:imageBase64
+    })
+  });
 
   playSound(type)
 
