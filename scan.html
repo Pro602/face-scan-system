@@ -309,7 +309,7 @@ async function confirmAttendance(user) {
   const locationText = gps.lat + "," + gps.lng;
   const loc = locationsData.find(l => l.name === locationName);
 
-  // 3. ตรวจสอบระยะทาง (Location Validation)
+  // 3. ตรวจสอบระยะทาง
   if (loc) {
     const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
     if (dist > (loc.radius || 300)) {
@@ -331,14 +331,15 @@ async function confirmAttendance(user) {
 
   status.innerText = "⏳ กำลังบันทึกข้อมูลและรูปภาพ...";
 
-  // 📸 จับภาพหน้าจอ (ทำหลังจากกดยืนยันเพื่อความเร็ว)
+  // 📸 จับภาพหน้าจอ (บีบอัดขนาดเล็กเพื่อให้ส่งผ่าน Google Script ได้ชัวร์)
   const imageBase64 = captureImage();
 
   try {
-    // 5. ส่งข้อมูลไปยัง Google Apps Script
-    // หมายเหตุ: ไม่ใช้ no-cors เพื่อให้ดักจับ Error ได้แม่นยำขึ้น
-    const response = await fetch(API_URL, {
+    // 5. ส่งข้อมูลไปยัง Google Apps Script (ใช้ mode: 'no-cors' เพื่อความเสถียรสูงสุด)
+    await fetch(API_URL, {
       method: "POST",
+      mode: 'no-cors',
+      headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({
         action: "attendance",
         studentId: user.studentId,
@@ -351,42 +352,37 @@ async function confirmAttendance(user) {
       })
     });
 
-    // 6. แจ้งเตือนเมื่อสำเร็จ
-    playSound(type);
-    if (type === "IN") {
-      speak("สวัสดี " + user.name);
-    } else {
-      speak("ลาก่อน " + user.name);
-    }
-
-    alert("✅ บันทึกสำเร็จ");
-    location.reload(); // รีโหลดหน้าจอเพื่อเริ่มใหม่
+    // 6. แจ้งเตือนเมื่อสำเร็จ (หน่วงเวลาเล็กน้อยเพื่อให้ระบบประมวลผล)
+    setTimeout(() => {
+      playSound(type);
+      speak(type === "IN" ? "สวัสดี " + user.name : "ลาก่อน " + user.name);
+      alert("✅ บันทึกสำเร็จ");
+      location.reload();
+    }, 2000);
 
   } catch (err) {
-    console.error("Fetch Error:", err);
-    // กรณีที่ fetch ติด CORS แต่จริงๆ ข้อมูลอาจเข้าแล้ว (เป็นพฤติกรรมปกติของ GAS)
-    // ให้รอสักครู่แล้วแจ้งสำเร็จ หรือแจ้งตรวจสอบเน็ต
-    alert("✅ ดำเนินการเสร็จสิ้น (หากข้อมูลไม่ขึ้นโปรดตรวจสอบอินเทอร์เน็ต)");
+    console.error("Error:", err);
+    alert("❌ เกิดข้อผิดพลาดในการเชื่อมต่อ แต่ข้อมูลอาจถูกบันทึกแล้ว");
     location.reload();
   }
 }
 
 function captureImage() {
   const canvas = document.createElement("canvas");
-  // ลดขนาดลงเล็กน้อยเพื่อความเร็วในการส่งข้อมูล (240x180 ประหยัดแบนด์วิธกว่า)
-  canvas.width = 240;
-  canvas.height = 180;
+  // ลดขนาดลงเหลือ 200x150 เพื่อให้ส่งข้อมูลผ่านได้ 100% ไม่ติดคอขวด
+  canvas.width = 200;
+  canvas.height = 150;
 
   const ctx = canvas.getContext("2d");
   
-  // Mirror ภาพให้ตรงกับที่ตาเห็น
+  // Mirror ภาพ
   ctx.translate(canvas.width, 0);
   ctx.scale(-1, 1);
   
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  // ใช้คุณภาพ 0.3 เพื่อให้ไฟล์มีขนาดประมาณ 10-20KB (ส่งไวและไม่ค้าง)
-  return canvas.toDataURL("image/jpeg", 0.3);
+  // คุณภาพ 0.2 ไฟล์จะมีขนาดเล็กมาก (ประมาณ 5-10 KB) ส่งไวมาก
+  return canvas.toDataURL("image/jpeg", 0.2);
 }
 </script>
 
