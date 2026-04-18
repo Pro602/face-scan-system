@@ -330,20 +330,19 @@ async function confirmAttendance(user){
     return
   }
 
-  await fetch(API_URL,{
-    method:"POST",
-    mode:"no-cors",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({
-      action:"attendance",
-      studentId:user.studentId,
-      name:user.name,
-      department:user.class,
-      type:type,
-      location:locationText,
-      locationName:locationName
-    })
+await fetch(API_URL,{
+  method:"POST",
+  headers:{ "Content-Type":"application/json" },
+  body:JSON.stringify({
+    action:"attendance",
+    studentId:user.studentId,
+    name:user.name,
+    department:user.class,
+    type:type,
+    location:locationText,
+    locationName:locationName
   })
+})
 
   playSound(type)
 
