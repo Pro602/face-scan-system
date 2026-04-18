@@ -314,7 +314,9 @@ async function confirmAttendance(user){
     return
   }
 
- // 🔥 STEP 1: บันทึก attendance
+// 🔥 STEP 1: บันทึก attendance
+console.log("STEP 1 START");
+
 await fetch(API_URL,{
   method:"POST",
   mode:"no-cors",
@@ -330,10 +332,15 @@ await fetch(API_URL,{
   })
 });
 
-// ✅ รอ 1 วินาที (สำคัญมาก)
+console.log("STEP 1 DONE");
+
+// ✅ รอ 1 วินาที
 await new Promise(resolve => setTimeout(resolve, 1000));
 
+
 // 🔥 STEP 2: upload รูป
+console.log("STEP 2 START");
+
 const imageBase64 = captureImage();
 
 await fetch(API_URL,{
@@ -347,9 +354,14 @@ await fetch(API_URL,{
   })
 });
 
-  alert("✅ บันทึกสำเร็จ")
-  location.reload()
-}
+console.log("STEP 2 DONE");
+
+
+// 🔥 หน่วงก่อน reload (สำคัญมาก)
+setTimeout(()=>{
+  alert("✅ บันทึกสำเร็จ");
+  location.reload();
+},1500);
   
 function captureImage() {
   const canvas = document.createElement("canvas");
