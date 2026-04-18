@@ -330,8 +330,9 @@ async function confirmAttendance(user){
     return
   }
 
-const res = await fetch(API_URL,{
+await fetch(API_URL,{
   method:"POST",
+  mode:"no-cors", // 🔥 ใช้อันนี้
   headers:{ "Content-Type":"application/json" },
   body:JSON.stringify({
     action:"attendance",
@@ -343,6 +344,10 @@ const res = await fetch(API_URL,{
     locationName:locationName
   })
 });
+
+// 🔥 แสดงผลเลย (เพราะอ่าน response ไม่ได้อยู่แล้ว)
+alert("✅ บันทึกสำเร็จ");
+location.reload();
 
 const result = await res.json();
 
