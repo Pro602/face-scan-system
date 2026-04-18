@@ -289,100 +289,60 @@ async function confirmAttendance(user) {
   const type = document.getElementById("typeSelect").value;
   const locationName = document.getElementById("locationSelect").value;
 
-  // 1. ตรวจสอบการเลือกสถานที่
-  if (!locationName) {
-    alert("❌ กรุณาเลือกสถานที่");
-    isProcessing = false;
-    startScanLoop();
-    return;
-  }
-
-  // 2. ตรวจสอบ GPS
+  if (!locationName) return alert("❌ เลือกสถานที่");
   const gps = await getGPS();
-  if (!gps.lat) {
-    alert("❌ กรุณาเปิด GPS");
-    isProcessing = false;
-    startScanLoop();
-    return;
-  }
+  if (!gps.lat) return alert("❌ เปิด GPS");
 
   const locationText = gps.lat + "," + gps.lng;
   const loc = locationsData.find(l => l.name === locationName);
-
-  // 3. ตรวจสอบระยะทาง
   if (loc) {
     const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
-    if (dist > (loc.radius || 300)) {
-      playSound("ERROR");
-      speak("อยู่นอกพื้นที่");
-      alert("❌ อยู่นอกพื้นที่ (ระยะห่าง: " + Math.round(dist) + " เมตร)");
-      isProcessing = false;
-      startScanLoop();
-      return;
-    }
+    if (dist > (loc.radius || 300)) return alert("❌ อยู่นอกพื้นที่");
   }
 
-  // 4. ยืนยันก่อนบันทึก
   if (!confirm(`ยืนยัน ${type}\n${user.name}`)) {
     isProcessing = false;
     startScanLoop();
     return;
   }
 
-  status.innerText = "⏳ กำลังบันทึกข้อมูลและรูปภาพ...";
-
-  // 📸 จับภาพหน้าจอ (บีบอัดขนาดเล็กเพื่อให้ส่งผ่าน Google Script ได้ชัวร์)
+  status.innerText = "⏳ กำลังส่งข้อมูล...";
   const imageBase64 = captureImage();
 
-  try {
-    // 5. ส่งข้อมูลไปยัง Google Apps Script (ใช้ mode: 'no-cors' เพื่อความเสถียรสูงสุด)
-    await fetch(API_URL, {
-      method: "POST",
-      mode: 'no-cors',
-      headers: { "Content-Type": "text/plain" },
-      body: JSON.stringify({
-        action: "attendance",
-        studentId: user.studentId,
-        name: user.name,
-        department: user.class,
-        type: type,
-        location: locationText,
-        locationName: locationName,
-        image: imageBase64 
-      })
-    });
-
-    // 6. แจ้งเตือนเมื่อสำเร็จ (หน่วงเวลาเล็กน้อยเพื่อให้ระบบประมวลผล)
-    setTimeout(() => {
-      playSound(type);
-      speak(type === "IN" ? "สวัสดี " + user.name : "ลาก่อน " + user.name);
-      alert("✅ บันทึกสำเร็จ");
-      location.reload();
-    }, 2000);
-
-  } catch (err) {
-    console.error("Error:", err);
-    alert("❌ เกิดข้อผิดพลาดในการเชื่อมต่อ แต่ข้อมูลอาจถูกบันทึกแล้ว");
+  fetch(API_URL, {
+    method: "POST",
+    mode: "no-cors", // สำคัญมากสำหรับส่งรูป
+    body: JSON.stringify({
+      action: "attendance",
+      studentId: user.studentId,
+      name: user.name,
+      department: user.class,
+      type: type,
+      location: locationText,
+      locationName: locationName,
+      image: imageBase64
+    })
+  }).then(() => {
+    playSound(type);
+    alert("✅ บันทึกสำเร็จ");
     location.reload();
-  }
+  }).catch(err => {
+    console.error(err);
+    alert("❌ บันทึกไม่สำเร็จ");
+    isProcessing = false;
+    startScanLoop();
+  });
 }
 
 function captureImage() {
   const canvas = document.createElement("canvas");
-  // ลดขนาดลงเหลือ 200x150 เพื่อให้ส่งข้อมูลผ่านได้ 100% ไม่ติดคอขวด
-  canvas.width = 200;
+  canvas.width = 200; // ขนาดเล็กเพื่อความชัวร์
   canvas.height = 150;
-
   const ctx = canvas.getContext("2d");
-  
-  // Mirror ภาพ
   ctx.translate(canvas.width, 0);
   ctx.scale(-1, 1);
-  
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-  // คุณภาพ 0.2 ไฟล์จะมีขนาดเล็กมาก (ประมาณ 5-10 KB) ส่งไวมาก
-  return canvas.toDataURL("image/jpeg", 0.2);
+  return canvas.toDataURL("image/jpeg", 0.1); // คุณภาพต่ำสุดเพื่อลดขนาดไฟล์
 }
 </script>
 
