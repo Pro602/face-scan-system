@@ -314,56 +314,49 @@ async function confirmAttendance(user){
     return
   }
 
-// 🔥 STEP 1: บันทึก attendance
-console.log("STEP 1 START");
+  // ===== STEP 1: บันทึก attendance =====
+  await fetch(API_URL,{
+    method:"POST",
+    mode:"no-cors",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({
+      action:"attendance",
+      studentId:user.studentId,
+      name:user.name,
+      department:user.class,
+      type:type,
+      location:locationText,
+      locationName:locationName
+    })
+  });
 
-await fetch(API_URL,{
-  method:"POST",
-  mode:"no-cors",
-  headers:{ "Content-Type":"application/json" },
-  body:JSON.stringify({
-    action:"attendance",
-    studentId:user.studentId,
-    name:user.name,
-    department:user.class,
-    type:type,
-    location:locationText,
-    locationName:locationName
-  })
-});
+  // 🔥 รอให้ Sheet บันทึกก่อน
+  await new Promise(r => setTimeout(r,1000));
 
-console.log("STEP 1 DONE");
+  // ===== STEP 2: upload รูป =====
+  const imageBase64 = captureImage();
 
-// ✅ รอ 1 วินาที
-await new Promise(resolve => setTimeout(resolve, 1000));
+  await fetch(API_URL,{
+    method:"POST",
+    mode:"no-cors",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({
+      action:"uploadImage",
+      studentId:user.studentId,
+      image:imageBase64
+    })
+  });
 
-
-// 🔥 STEP 2: upload รูป
-console.log("STEP 2 START");
-
-const imageBase64 = captureImage();
-
-await fetch(API_URL,{
-  method:"POST",
-  mode:"no-cors",
-  headers:{ "Content-Type":"application/json" },
-  body:JSON.stringify({
-    action:"uploadImage",
-    studentId:user.studentId,
-    image:imageBase64
-  })
-});
-
-console.log("STEP 2 DONE");
+  // 🔥 หน่วงก่อน reload
+  setTimeout(()=>{
+    alert("✅ บันทึกสำเร็จ");
+    location.reload();
+  },1500);
+}
 
 
-// 🔥 หน่วงก่อน reload (สำคัญมาก)
-setTimeout(()=>{
-  alert("✅ บันทึกสำเร็จ");
-  location.reload();
-},1500); 
-} 
-  function captureImage() {
+// ===== capture รูป =====
+function captureImage() {
   const canvas = document.createElement("canvas");
   canvas.width = 120;
   canvas.height = 90;
