@@ -314,35 +314,38 @@ async function confirmAttendance(user){
     return
   }
 
-  // 🔥 STEP 1: บันทึก attendance (ไม่มีรูป)
-  await fetch(API_URL,{
-    method:"POST",
-    mode:"no-cors",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({
-      action:"attendance",
-      studentId:user.studentId,
-      name:user.name,
-      department:user.class,
-      type:type,
-      location:locationText,
-      locationName:locationName
-    })
-  });
+ // 🔥 STEP 1: บันทึก attendance
+await fetch(API_URL,{
+  method:"POST",
+  mode:"no-cors",
+  headers:{ "Content-Type":"application/json" },
+  body:JSON.stringify({
+    action:"attendance",
+    studentId:user.studentId,
+    name:user.name,
+    department:user.class,
+    type:type,
+    location:locationText,
+    locationName:locationName
+  })
+});
 
-  // 🔥 STEP 2: อัปโหลดรูป (แยก)
-  const imageBase64 = captureImage();
+// ✅ รอ 1 วินาที (สำคัญมาก)
+await new Promise(resolve => setTimeout(resolve, 1000));
 
-  await fetch(API_URL,{
-    method:"POST",
-    mode:"no-cors",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({
-      action:"uploadImage",
-      studentId:user.studentId,
-      image:imageBase64
-    })
-  });
+// 🔥 STEP 2: upload รูป
+const imageBase64 = captureImage();
+
+await fetch(API_URL,{
+  method:"POST",
+  mode:"no-cors",
+  headers:{ "Content-Type":"application/json" },
+  body:JSON.stringify({
+    action:"uploadImage",
+    studentId:user.studentId,
+    image:imageBase64
+  })
+});
 
   alert("✅ บันทึกสำเร็จ")
   location.reload()
