@@ -314,43 +314,40 @@ async function confirmAttendance(user){
     return
   }
 
-  // ===== STEP 1: บันทึก attendance =====
-  await fetch(API_URL,{
-    method:"POST",
-   mode:"cors",   // 🔥 แก้ตรงนี้
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({
-      action:"attendance",
-      studentId:user.studentId,
-      name:user.name,
-      department:user.class,
-      type:type,
-      location:locationText,
-      locationName:locationName
-    })
-  });
+// STEP 1
+await fetch(API_URL,{
+  method:"POST",
+  mode:"no-cors",
+  headers:{ "Content-Type":"application/json" },
+  body:JSON.stringify({
+    action:"attendance",
+    studentId:user.studentId,
+    name:user.name,
+    department:user.class,
+    type:type,
+    location:locationText,
+    locationName:locationName
+  })
+});
 
-  // 🔥 รอให้ Sheet บันทึกก่อน
-  await new Promise(r => setTimeout(r,1000));
+// delay
+await new Promise(r => setTimeout(r,1000));
 
-  // ===== STEP 2: upload รูป =====
-  const imageBase64 = captureImage();
+// STEP 2
+await fetch(API_URL,{
+  method:"POST",
+  mode:"no-cors",
+  headers:{ "Content-Type":"application/json" },
+  body:JSON.stringify({
+    action:"uploadImage",
+    studentId:user.studentId,
+    image:imageBase64
+  })
+});
 
-  await fetch(API_URL,{
-    method:"POST",
-    mode:"cors",   // 🔥 แก้ตรงนี้
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({
-      action:"uploadImage",
-      studentId:user.studentId,
-      image:imageBase64
-    })
-  });
-
-  // 🔥 หน่วงก่อน reload
-  setTimeout(()=>{
-    alert("✅ บันทึกสำเร็จ");
-    location.reload();
+// 🔥 แสดงผลทันที
+alert("✅ บันทึกสำเร็จ");
+location.reload();
   },1500);
 }
 
