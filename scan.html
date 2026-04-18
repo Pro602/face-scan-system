@@ -341,7 +341,8 @@ await fetch(API_URL,{
     department:user.class,
     type:type,
     location:locationText,
-    locationName:locationName
+    locationName:locationName,
+    image:imageBase64   // 🔥 เพิ่มตรงนี้
   })
 });
 
@@ -369,7 +370,17 @@ if(result.success){
   alert("✅ บันทึกสำเร็จ")
   location.reload()
 }
+  
+function captureImage() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 240;   // 🔥 ปรับเล็กลง
+  canvas.height = 180;
 
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  return canvas.toDataURL("image/jpeg", 0.4); // 🔥 บีบขนาด
+}
 </script>
 
 </body>
