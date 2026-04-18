@@ -363,13 +363,14 @@ async function confirmAttendance(user){
   
 function captureImage() {
   const canvas = document.createElement("canvas");
-  canvas.width = 240;   // 🔥 ปรับเล็กลง
-  canvas.height = 180;
+
+  canvas.width = 120;   // 🔥 ลดลงอีก
+  canvas.height = 90;
 
   const ctx = canvas.getContext("2d");
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  return canvas.toDataURL("image/jpeg", 0.4); // 🔥 บีบขนาด
+  return canvas.toDataURL("image/jpeg", 0.2); // 🔥 บีบหนัก
 }
 </script>
 
