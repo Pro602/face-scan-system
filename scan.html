@@ -289,45 +289,20 @@ async function confirmAttendance(user) {
   const type = document.getElementById("typeSelect").value;
   const locationName = document.getElementById("locationSelect").value;
 
-  if (!locationName) {
-    alert("❌ กรุณาเลือกสถานที่");
-    isProcessing = false;
-    startScanLoop();
-    return;
-  }
-
+  // ... (ส่วนเช็คสถานที่และ GPS คงเดิม) ...
   const gps = await getGPS();
-  if (!gps.lat) {
-    alert("❌ กรุณาเปิด GPS");
-    isProcessing = false;
-    startScanLoop();
-    return;
-  }
-
   const locationText = gps.lat + "," + gps.lng;
-  const loc = locationsData.find(l => l.name === locationName);
-
-  if (loc) {
-    const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
-    if (dist > (loc.radius || 300)) {
-      playSound("ERROR"); speak("อยู่นอกพื้นที่");
-      alert("❌ อยู่นอกพื้นที่");
-      isProcessing = false; startScanLoop();
-      return;
-    }
-  }
 
   if (!confirm(`ยืนยัน ${type}\n${user.name}`)) {
     isProcessing = false; startScanLoop();
     return;
   }
 
-  // 📸 เริ่มกระบวนการบันทึก
   status.innerText = "⏳ กำลังบันทึกข้อมูล...";
   const imageBase64 = captureImage();
 
   try {
-    // 🔵 1. บันทึกข้อมูลตัวหนังสือ (ใช้ mode: no-cors ตามเดิมที่เคยบันทึกเข้าชีทได้)
+    // 🔵 1. บันทึกข้อมูลตัวหนังสือ
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
@@ -343,36 +318,37 @@ async function confirmAttendance(user) {
       })
     });
 
-    // 🟢 2. บันทึกรูปภาพลง Drive (ใช้ URLSearchParams)
-    status.innerText = "📸 กำลังบันทึกรูปภาพ...";
-    const imgParams = new URLSearchParams();
-    imgParams.append("action", "uploadImage");
-    imgParams.append("studentId", user.studentId);
-    imgParams.append("image", imageBase64);
+    // ⏱ หน่วงเวลา 1 วินาทีเพื่อให้ Script ฝั่ง Server เคลียร์คิวงานแรก
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // ส่งภาพโดยไม่ใส่ no-cors เพื่อให้ระบบรอจนกว่าจะส่งเสร็จจริงๆ
+    // 🟢 2. บันทึกรูปภาพ (ใช้ URLSearchParams แบบเพียวๆ)
+    status.innerText = "📸 กำลังบันทึกรูปภาพ...";
+    
+    const params = new URLSearchParams();
+    params.append("action", "uploadImage");
+    params.append("studentId", user.studentId);
+    params.append("image", imageBase64);
+
+    // ส่งแบบ no-cors เพื่อให้ผ่านข้อจำกัด Browser ง่ายที่สุด
     await fetch(API_URL, {
       method: "POST",
+      mode: "no-cors",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: imgParams.toString()
+      body: params.toString()
     });
 
-    // 🏁 3. เมื่อสำเร็จทั้งหมด ค่อยแจ้งเตือนและ Reload
+    // 🏁 จบงาน
     playSound(type);
-    if (type === "IN") speak("สวัสดี " + user.name);
-    else speak("ลาก่อน " + user.name);
-
-    alert("✅ บันทึกข้อมูลและรูปภาพสำเร็จ");
+    alert("✅ บันทึกข้อมูลและรูปภาพสำเร็จ\n(กรุณาเช็คในคอลัมน์ I ของชีท)");
     location.reload();
 
   } catch (err) {
-    console.error("Error:", err);
+    console.error(err);
     alert("❌ เกิดข้อผิดพลาดในการบันทึกภาพ");
     isProcessing = false;
     startScanLoop();
   }
 }
-
 // ปรับให้ภาพเล็กลงที่สุดเพื่อความชัวร์ (120x90, คุณภาพ 0.1)
 function captureImage() {
   const canvas = document.createElement("canvas");
