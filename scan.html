@@ -347,7 +347,7 @@ async function confirmAttendance(user) {
     });
 
     // 🟢 ขั้นตอนที่ 2: บันทึกรูปภาพลง Drive (แยก Fetch อีกตัว)
-// ในฟังก์ชัน confirmAttendance ส่วนที่ส่งรูปภาพ
+// --- ส่วนที่ส่งรูปภาพใน confirmAttendance ---
 status.innerText = "📸 กำลังบันทึกรูปภาพ...";
 
 const formData = new URLSearchParams();
@@ -357,10 +357,13 @@ formData.append("image", imageBase64);
 
 await fetch(API_URL, {
   method: "POST",
-  mode: "no-cors", // ใช้ no-cors เพื่อข้ามปัญหาการตรวจสอบความปลอดภัยของ Browser
+  mode: "no-cors", // ใช้ no-cors เพื่อให้ Request ไหลผ่านได้ทันที
   headers: { "Content-Type": "application/x-www-form-urlencoded" },
   body: formData.toString()
 });
+
+alert("✅ บันทึกสำเร็จพร้อมรูปภาพ");
+location.reload();
 
 // แจ้งสำเร็จ
 playSound(type);
