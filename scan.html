@@ -285,48 +285,94 @@ function getDistance(lat1, lon1, lat2, lon2){
 }
 
 // ================= CONFIRM =================
-async function confirmAttendance(user) {
-  const type = document.getElementById("typeSelect").value;
-  const locationName = document.getElementById("locationSelect").value;
-  const gps = await getGPS();
-  const locationText = gps.lat + "," + gps.lng;
+async function confirmAttendance(user){
 
-  if (!confirm(`ยืนยันการบันทึก: ${user.name}`)) return;
+  const type=document.getElementById("typeSelect").value
+  const locationName=document.getElementById("locationSelect").value
 
-  status.innerText = "⏳ กำลังบันทึก...";
+  if(!locationName){
+    alert("❌ กรุณาเลือกสถานที่")
+    isProcessing=false
+    startScanLoop()
+    return
+  }
+
+  const gps = await getGPS()
+
+  if(!gps.lat){
+    alert("❌ กรุณาเปิด GPS")
+    isProcessing=false
+    startScanLoop()
+    return
+  }
+
+  const locationText = gps.lat + "," + gps.lng
+
+  const loc = locationsData.find(l=>l.name===locationName)
+
+  if(loc){
+    const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng)
+
+    if(dist > (loc.radius || 300)){
+      playSound("ERROR")
+      speak("อยู่นอกพื้นที่")
+
+      alert("❌ อยู่นอกพื้นที่")
+      isProcessing=false
+      startScanLoop()
+      return
+    }
+  }
+
+  if(!confirm(`ยืนยัน ${type}\n${user.name}`)){
+    isProcessing=false
+    startScanLoop()
+    return
+  }
+
+  // 🔥 เพิ่มตรงนี้
   const imageBase64 = captureImage();
 
-  // ส่งข้อมูลแบบ JSON ผ่าน Fetch
-  fetch(API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain" }, // ใช้ text/plain เพื่อเลี่ยง CORS preflight
-    body: JSON.stringify({
-      action: "attendance",
-      studentId: user.studentId,
-      name: user.name,
-      department: user.class,
-      type: type,
-      location: locationText,
-      locationName: locationName,
-      image: imageBase64
+  await fetch(API_URL,{
+    method:"POST",
+    mode:"no-cors",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({
+      action:"attendance",
+      studentId:user.studentId,
+      name:user.name,
+      department:user.class,
+      type:type,
+      location:locationText,
+      locationName:locationName,
+      //image:imageBase64
     })
-  }).then(() => {
-    alert("✅ บันทึกเรียบร้อย");
-    location.reload();
-  }).catch(err => {
-    // แม้จะขึ้น Error ใน Console แต่ถ้าเน็ตปกติ ข้อมูลมักจะเข้าชีทแล้ว
-    alert("✅ ดำเนินการสำเร็จ");
-    location.reload();
   });
-}
 
+  playSound(type)
+
+  if(type==="IN"){
+    speak("สวัสดี "+user.name)
+  }else{
+    speak("ลาก่อน "+user.name)
+  }
+
+  alert("✅ บันทึกสำเร็จ")
+  location.reload()
+}
+  
 function captureImage() {
   const canvas = document.createElement("canvas");
-  canvas.width = 160; 
-  canvas.height = 120;
+
+  canvas.width = 120;   // 🔥 ลดลงอีก
+  canvas.height = 90;
+
   const ctx = canvas.getContext("2d");
-  ctx.translate(canvas.width, 0);
-  ctx.scale(-1, 1);
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.1); // บีบอัดมากที่สุดเพื่อความชัวร์
+
+  return canvas.toDataURL("image/jpeg", 0.2); // 🔥 บีบหนัก
 }
+</script>
+
+</body>
+</html>
