@@ -322,13 +322,12 @@ async function confirmAttendance(user) {
     return;
   }
 
+  // 📸 เริ่มกระบวนการบันทึก
   status.innerText = "⏳ กำลังบันทึกข้อมูล...";
-
-  // 📸 1. จับภาพ (ลดขนาดลงเพื่อความเสถียรสูงสุด)
   const imageBase64 = captureImage();
 
   try {
-    // 🔵 2. บันทึกข้อมูลตัวหนังสือลง Sheet
+    // 🔵 1. บันทึกข้อมูลตัวหนังสือ (ใช้ mode: no-cors ตามเดิมที่เคยบันทึกเข้าชีทได้)
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
@@ -344,39 +343,21 @@ async function confirmAttendance(user) {
       })
     });
 
-    // 🟢 3. บันทึกรูปภาพลง Drive (ส่งแบบ Form URL Encoded)
-// ... (โค้ดส่วนบันทึกข้อมูลตัวหนังสือเดิม) ...
+    // 🟢 2. บันทึกรูปภาพลง Drive (ใช้ URLSearchParams)
+    status.innerText = "📸 กำลังบันทึกรูปภาพ...";
+    const imgParams = new URLSearchParams();
+    imgParams.append("action", "uploadImage");
+    imgParams.append("studentId", user.studentId);
+    imgParams.append("image", imageBase64);
 
-status.innerText = "📸 กำลังบันทึกรูปภาพ...";
-
-const imgParams = new URLSearchParams();
-imgParams.append("action", "uploadImage");
-imgParams.append("studentId", user.studentId);
-imgParams.append("image", imageBase64);
-
-// เปลี่ยนการส่งภาพให้เป็นแบบที่รอผลลัพธ์ (Remove no-cors ออกชั่วคราวเพื่อเช็ค Error)
-try {
+    // ส่งภาพโดยไม่ใส่ no-cors เพื่อให้ระบบรอจนกว่าจะส่งเสร็จจริงๆ
     await fetch(API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: imgParams.toString()
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: imgParams.toString()
     });
-    
-    // ย้ายการแจ้งเตือนและ Reload มาไว้ที่นี่ (หลังจาก fetch เสร็จแล้วเท่านั้น)
-    playSound(type);
-    alert("✅ บันทึกข้อมูลและรูปภาพสำเร็จ");
-    location.reload();
-} catch (e) {
-    console.error("Image Upload Error:", e);
-    alert("❌ บันทึกข้อมูลสำเร็จ แต่ส่งรูปภาพไม่สำเร็จ");
-}
 
-// แจ้งสำเร็จและรีโหลด
-playSound(type);
-alert("✅ บันทึกข้อมูลและรูปภาพสำเร็จ");
-location.reload();
-
-    // 🏁 4. จบการทำงาน แจ้งผล
+    // 🏁 3. เมื่อสำเร็จทั้งหมด ค่อยแจ้งเตือนและ Reload
     playSound(type);
     if (type === "IN") speak("สวัสดี " + user.name);
     else speak("ลาก่อน " + user.name);
@@ -385,25 +366,25 @@ location.reload();
     location.reload();
 
   } catch (err) {
-    console.error(err);
-    alert("❌ เกิดข้อผิดพลาด กรุณาลองใหม่");
+    console.error("Error:", err);
+    alert("❌ เกิดข้อผิดพลาดในการบันทึกภาพ");
     isProcessing = false;
     startScanLoop();
   }
 }
 
-// ปรับขนาดภาพให้เล็กลงเพื่อประหยัด bandwidth และลดโอกาสพัง
+// ปรับให้ภาพเล็กลงที่สุดเพื่อความชัวร์ (120x90, คุณภาพ 0.1)
 function captureImage() {
   const canvas = document.createElement("canvas");
-  canvas.width = 120; // ลดจาก 160 เป็น 120
-  canvas.height = 90;  // ลดจาก 120 เป็น 90
+  canvas.width = 120; 
+  canvas.height = 90;  
   const ctx = canvas.getContext("2d");
 
   ctx.translate(canvas.width, 0);
   ctx.scale(-1, 1);
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  return canvas.toDataURL("image/jpeg", 0.2); // ลดคุณภาพเหลือ 0.2
+  return canvas.toDataURL("image/jpeg", 0.1); 
 }
 </script>
 
