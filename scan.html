@@ -18,6 +18,14 @@ body{
   text-align:center;
   padding:20px;
 }
+  /* --- เพิ่มส่วนแอนิเมชัน Logo --- */
+  .logo-wrapper { position: relative; display: inline-block; perspective: 1000px; margin-bottom: 10px; }
+  .logo-spin { animation: spin360 8s linear infinite; transform-style: preserve-3d; width: 70px; height: 70px; object-fit: contain; }
+  @keyframes spin360 { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }
+  
+  .brand-name { color: #60a5fa; font-weight: bold; font-size: 20px; margin: 5px 0 0 0; }
+  .brand-subtitle { color: #64748b; font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; margin-bottom: 20px; }
+  /* -------------------------- */
 video{
   width:100%;
   max-width:420px;
@@ -44,11 +52,17 @@ select{
 
 <body>
 
-<h2>📷 สแกนเข้างาน</h2>
+  <div style="display: flex; flex-direction: column; align-items: center; margin-top: 10px;">
+    <div class="logo-wrapper">
+        <img src="https://lh3.googleusercontent.com/d/1rlAx7j8TDQBCnqrBts_mzs75U1U1aYy3" alt="Logo" class="logo-spin">
+    </div>
+    <h1 class="brand-name">THAISIAM INKJET</h1>
+    <p class="brand-subtitle">Professional Attendance Recording Systems</p>
+  </div>
 
-<div id="status">กำลังโหลดระบบ...</div>
+  <div id="status">กำลังโหลดระบบ...</div>
 
-<video id="video" autoplay muted playsinline></video>
+  <video id="video" autoplay muted playsinline></video>
 
 <br>
 
