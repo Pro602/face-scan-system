@@ -318,7 +318,7 @@ async function confirmAttendance(user) {
   formData.append("type", type);
   formData.append("location", locationText);
   formData.append("locationName", locationName);
-  formData.append("image", imageBase64);
+  // formData.append("image", imageBase64);
 
   fetch(API_URL, {
     method: "POST",
