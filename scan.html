@@ -347,19 +347,20 @@ async function confirmAttendance(user) {
     });
 
     // 🟢 ขั้นตอนที่ 2: บันทึกรูปภาพลง Drive (แยก Fetch อีกตัว)
-    status.innerText = "📸 กำลังบันทึกรูปภาพ...";
-    
-    await fetch(API_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "uploadImage", // เรียกใช้ฟังก์ชัน saveImage ใน Code.gs
-        studentId: user.studentId,
-        image: imageBase64
-      })
-    });
+// ในฟังก์ชัน confirmAttendance ส่วนที่ส่งรูป
+status.innerText = "📸 กำลังบันทึกรูปภาพ...";
 
+await fetch(API_URL, {
+  method: "POST",
+  // ❌ ลบ mode: "no-cors" ออกชั่วคราวเพื่อดู error จริงใน Console
+  // ✅ เปลี่ยนมาส่งเป็น text/plain เพื่อเลี่ยงการตรวจ CORS ของ Google
+  headers: { "Content-Type": "text/plain" }, 
+  body: JSON.stringify({
+    action: "uploadImage",
+    studentId: user.studentId,
+    image: imageBase64
+  })
+});
     // สำเร็จทั้งหมด
     playSound(type)
     if (type === "IN") speak("สวัสดี " + user.name)
