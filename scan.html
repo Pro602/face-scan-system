@@ -8,7 +8,8 @@
 
 <script src="api-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  
 <style>
 body{
   font-family:sans-serif;
@@ -368,10 +369,29 @@ const locationName = document.getElementById("locationSelect").value;
       body: params.toString()
     });
 
-    // 🏁 จบงาน
+// 🏁 จบงาน
     playSound(type);
-    alert("✅ บันทึกข้อมูลและรูปภาพสำเร็จ\n(กรุณาเช็คในคอลัมน์ I ของชีท)");
-    location.reload();
+    
+    Swal.fire({
+      title: 'บันทึกสำเร็จ',
+      text: 'บันทึกข้อมูลและรูปภาพเรียบร้อยแล้ว',
+      icon: 'success',
+      confirmButtonText: 'ตกลง',
+      confirmButtonColor: '#6366f1', // สีเดียวกับปุ่มเริ่มสแกนของคุณ
+      allowOutsideClick: false // กันคนกดที่อื่นเพื่อปิด
+    }).then((result) => {
+      if (result.isConfirmed) {
+        // --- ตรรกะการเด้งกลับ ---
+        // 1. ถ้าหน้าจอนี้ถูกเปิดเป็นหน้าต่างใหม่ (target="_blank") ให้ปิดหน้าต่างนี้
+        if (window.opener) {
+            window.close();
+        } else {
+            // 2. ถ้าไม่ได้เปิดหน้าต่างใหม่ ให้ส่งกลับไปที่หน้า Dashboard เดิม
+            // เปลี่ยน URL ด้านล่างนี้เป็น URL หน้า Dashboard ของคุณ
+            window.location.href = "https://pro602.github.io/Scan/?v=1.1"; 
+        }
+      }
+    });
 
   } catch (err) {
     console.error(err);
