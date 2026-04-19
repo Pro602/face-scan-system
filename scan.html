@@ -287,39 +287,40 @@ function getDistance(lat1, lon1, lat2, lon2){
 // ================= CONFIRM =================
 async function confirmAttendance(user) {
   const type = document.getElementById("typeSelect").value;
-  const locationName=document.getElementById("locationSelect").value
+const locationName = document.getElementById("locationSelect").value;
 
-  if(!locationName){
-    alert("❌ กรุณาเลือกสถานที่")
-    isProcessing=false
-    startScanLoop()
-    return
+  if (!locationName) {
+    alert("❌ กรุณาเลือกสถานที่");
+    isProcessing = false;
+    startScanLoop();
+    return;
   }
 
-  const gps = await getGPS()
+  const gps = await getGPS();
 
-  if(!gps.lat){
-    alert("❌ กรุณาเปิด GPS")
-    isProcessing=false
-    startScanLoop()
-    return
+  if (!gps.lat) {
+    alert("❌ กรุณาเปิด GPS");
+    isProcessing = false;
+    startScanLoop();
+    return;
   }
 
-  const locationText = gps.lat + "," + gps.lng
+  const locationText = gps.lat + "," + gps.lng;
+  const loc = locationsData.find(l => l.name === locationName);
 
-  const loc = locationsData.find(l=>l.name===locationName)
+  if (loc) {
+    const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
+    const radius = loc.radius || 300;
 
-  if(loc){
-    const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng)
+    // --- ส่วนที่ปรับปรุง: เพิ่มเงื่อนไขยกเว้น "ทำงานนอกสถานที่" ---
+    if (locationName !== "ทำงานนอกสถานที่" && dist > radius) {
+      playSound("ERROR");
+      speak("อยู่นอกพื้นที่");
 
-    if(dist > (loc.radius || 300)){
-      playSound("ERROR")
-      speak("อยู่นอกพื้นที่")
-
-      alert("❌ อยู่นอกพื้นที่")
-      isProcessing=false
-      startScanLoop()
-      return
+      alert("❌ คุณอยู่ห่างจาก " + locationName + " ประมาณ " + Math.round(dist) + " เมตร (จำกัดที่ " + radius + " เมตร)");
+      isProcessing = false;
+      startScanLoop();
+      return;
     }
   }
 
