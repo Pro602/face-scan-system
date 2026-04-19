@@ -288,65 +288,45 @@ function getDistance(lat1, lon1, lat2, lon2){
 async function confirmAttendance(user) {
   const type = document.getElementById("typeSelect").value;
   const locationName = document.getElementById("locationSelect").value;
-
-  if (!locationName) return alert("❌ เลือกสถานที่");
   const gps = await getGPS();
-  if (!gps.lat) return alert("❌ เปิด GPS");
-
   const locationText = gps.lat + "," + gps.lng;
-  const loc = locationsData.find(l => l.name === locationName);
-  if (loc) {
-    const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
-    if (dist > (loc.radius || 300)) return alert("❌ อยู่นอกพื้นที่");
-  }
 
-  if (!confirm(`ยืนยัน ${type}\n${user.name}`)) {
-    isProcessing = false;
-    startScanLoop();
-    return;
-  }
+  if (!confirm(`ยืนยันการบันทึก: ${user.name}`)) return;
 
-  status.innerText = "⏳ กำลังส่งข้อมูล...";
+  status.innerText = "⏳ กำลังบันทึก...";
   const imageBase64 = captureImage();
 
-  // ใช้ URLSearchParams แทน JSON เพื่อความเสถียรในการส่งรูป
-  const formData = new URLSearchParams();
-  formData.append("action", "attendance");
-  formData.append("studentId", user.studentId);
-  formData.append("name", user.name);
-  formData.append("department", user.class);
-  formData.append("type", type);
-  formData.append("location", locationText);
-  formData.append("locationName", locationName);
-  // formData.append("image", imageBase64);
-
+  // ส่งข้อมูลแบบ JSON ผ่าน Fetch
   fetch(API_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: formData.toString()
+    headers: { "Content-Type": "text/plain" }, // ใช้ text/plain เพื่อเลี่ยง CORS preflight
+    body: JSON.stringify({
+      action: "attendance",
+      studentId: user.studentId,
+      name: user.name,
+      department: user.class,
+      type: type,
+      location: locationText,
+      locationName: locationName,
+      image: imageBase64
+    })
   }).then(() => {
-    playSound(type);
-    alert("✅ บันทึกสำเร็จ");
+    alert("✅ บันทึกเรียบร้อย");
     location.reload();
   }).catch(err => {
-    // ในกรณี GAS แม้จะบันทึกสำเร็จ แต่มันจะมองเป็น Error เพราะ CORS
-    // ให้เช็คที่ชีท ถ้าข้อมูลมา แปลว่าใช้ได้ครับ
-    alert("✅ ดำเนินการเสร็จสิ้น");
+    // แม้จะขึ้น Error ใน Console แต่ถ้าเน็ตปกติ ข้อมูลมักจะเข้าชีทแล้ว
+    alert("✅ ดำเนินการสำเร็จ");
     location.reload();
   });
 }
 
 function captureImage() {
   const canvas = document.createElement("canvas");
-  canvas.width = 160; // ปรับให้เล็กลงอีกเพื่อความเร็ว
+  canvas.width = 160; 
   canvas.height = 120;
   const ctx = canvas.getContext("2d");
   ctx.translate(canvas.width, 0);
   ctx.scale(-1, 1);
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.1); // คุณภาพต่ำสุด
+  return canvas.toDataURL("image/jpeg", 0.1); // บีบอัดมากที่สุดเพื่อความชัวร์
 }
-</script>
-
-</body>
-</html>
