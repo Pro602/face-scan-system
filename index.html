@@ -151,15 +151,61 @@
     @keyframes fadeIn    { from { opacity: 0; }                      to { opacity: 1; } }
     @keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes fadeInUp  { from { opacity: 0; transform: translateY(20px);  } to { opacity: 1; transform: translateY(0); } }
+    /* ส่วนที่ทำให้ Logo หมุน 3D */
+.logo-wrapper { 
+    position: relative; 
+    display: inline-block; 
+    perspective: 1000px; 
+}
+.logo-fade { 
+    animation: fadeInLogo 1.2s ease forwards; 
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2)); 
+}
+.logo-spin { 
+    animation: spin360 8s linear infinite; 
+    transform-style: preserve-3d; 
+}
+
+@keyframes fadeInLogo { 
+    from { opacity: 0; transform: translateY(-10px) scale(0.9); } 
+    to { opacity: 1; transform: translateY(0) scale(1); } 
+}
+@keyframes spin360 { 
+    from { transform: rotateY(0deg); } 
+    to { transform: rotateY(360deg); } 
+}
+
+/* ปรับสีตัวอักษรให้เหมือน Dashboard */
+.brand-name {
+    color: #60a5fa; /* สีฟ้า blue-400 */
+    font-weight: bold;
+    font-size: 24px;
+    letter-spacing: -0.025em;
+    margin: 10px 0 0 0;
+}
+.brand-subtitle {
+    color: #64748b; /* สีเทา slate-500 */
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    margin: 0;
+}
   </style>
 </head>
 <body>
 
-  <div class="header">
-    <span class="logo-icon">🏢</span>
-    <h1>ระบบบันทึกเวลาเข้างานTHAISIAM INKJET</h1>
-    <p class="subtitle">Face Recognition &amp; GPS Attendance</p>
-  </div>
+<div class="header" style="display: flex; flex-direction: column; align-items: center; margin-bottom: 30px;">
+    <div class="logo-wrapper">
+        <img src="https://lh3.googleusercontent.com/d/1rlAx7j8TDQBCnqrBts_mzs75U1U1aYy3" 
+             alt="Logo" 
+             class="logo-fade logo-spin" 
+             style="width: 80px; height: 80px; object-contain: contain;">
+    </div>
+
+    <h1 class="brand-name">THAISIAM INKJET</h1>
+    <p class="brand-subtitle">Professional Attendance Recording Systems</p>
+    <p style="font-size: 14px; color: #94a3b8; margin-top: 5px;">Face Recognition & GPS Attendance</p>
+</div>
 
   <div id="apiWarning" class="api-warning">
     ⚠️ ยังไม่ได้ตั้งค่า API —
