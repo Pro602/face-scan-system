@@ -287,11 +287,41 @@ function getDistance(lat1, lon1, lat2, lon2){
 // ================= CONFIRM =================
 async function confirmAttendance(user) {
   const type = document.getElementById("typeSelect").value;
-  const locationName = document.getElementById("locationSelect").value;
+  const locationName=document.getElementById("locationSelect").value
 
-  // ... (ส่วนเช็คสถานที่และ GPS คงเดิม) ...
-  const gps = await getGPS();
-  const locationText = gps.lat + "," + gps.lng;
+  if(!locationName){
+    alert("❌ กรุณาเลือกสถานที่")
+    isProcessing=false
+    startScanLoop()
+    return
+  }
+
+  const gps = await getGPS()
+
+  if(!gps.lat){
+    alert("❌ กรุณาเปิด GPS")
+    isProcessing=false
+    startScanLoop()
+    return
+  }
+
+  const locationText = gps.lat + "," + gps.lng
+
+  const loc = locationsData.find(l=>l.name===locationName)
+
+  if(loc){
+    const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng)
+
+    if(dist > (loc.radius || 300)){
+      playSound("ERROR")
+      speak("อยู่นอกพื้นที่")
+
+      alert("❌ อยู่นอกพื้นที่")
+      isProcessing=false
+      startScanLoop()
+      return
+    }
+  }
 
   if (!confirm(`ยืนยัน ${type}\n${user.name}`)) {
     isProcessing = false; startScanLoop();
