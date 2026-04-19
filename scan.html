@@ -345,20 +345,31 @@ async function confirmAttendance(user) {
     });
 
     // 🟢 3. บันทึกรูปภาพลง Drive (ส่งแบบ Form URL Encoded)
-// ในฟังก์ชัน confirmAttendance ส่วนที่ส่งรูป
+// ... (โค้ดส่วนบันทึกข้อมูลตัวหนังสือเดิม) ...
+
 status.innerText = "📸 กำลังบันทึกรูปภาพ...";
 
-// ใช้ FormData เพื่อความเสถียรในการส่ง Base64 ยาวๆ
-const formData = new FormData();
-formData.append("action", "uploadImage");
-formData.append("studentId", user.studentId);
-formData.append("image", imageBase64);
+const imgParams = new URLSearchParams();
+imgParams.append("action", "uploadImage");
+imgParams.append("studentId", user.studentId);
+imgParams.append("image", imageBase64);
 
-await fetch(API_URL, {
-  method: "POST",
-  mode: "no-cors", // จำเป็นสำหรับ GAS เพื่อข้ามปัญหา CORS
-  body: formData
-});
+// เปลี่ยนการส่งภาพให้เป็นแบบที่รอผลลัพธ์ (Remove no-cors ออกชั่วคราวเพื่อเช็ค Error)
+try {
+    await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: imgParams.toString()
+    });
+    
+    // ย้ายการแจ้งเตือนและ Reload มาไว้ที่นี่ (หลังจาก fetch เสร็จแล้วเท่านั้น)
+    playSound(type);
+    alert("✅ บันทึกข้อมูลและรูปภาพสำเร็จ");
+    location.reload();
+} catch (e) {
+    console.error("Image Upload Error:", e);
+    alert("❌ บันทึกข้อมูลสำเร็จ แต่ส่งรูปภาพไม่สำเร็จ");
+}
 
 // แจ้งสำเร็จและรีโหลด
 playSound(type);
