@@ -285,52 +285,50 @@ function getDistance(lat1, lon1, lat2, lon2){
 }
 
 // ================= CONFIRM =================
-// ================= CONFIRM =================
 async function confirmAttendance(user) {
-
-  const type = document.getElementById("typeSelect").value
-  const locationName = document.getElementById("locationSelect").value
+  const type = document.getElementById("typeSelect").value;
+  const locationName = document.getElementById("locationSelect").value;
 
   if (!locationName) {
-    alert("❌ กรุณาเลือกสถานที่")
-    isProcessing = false
-    startScanLoop()
-    return
+    alert("❌ กรุณาเลือกสถานที่");
+    isProcessing = false;
+    startScanLoop();
+    return;
   }
 
-  const gps = await getGPS()
+  const gps = await getGPS();
   if (!gps.lat) {
-    alert("❌ กรุณาเปิด GPS")
-    isProcessing = false
-    startScanLoop()
-    return
+    alert("❌ กรุณาเปิด GPS");
+    isProcessing = false;
+    startScanLoop();
+    return;
   }
 
-  const locationText = gps.lat + "," + gps.lng
-  const loc = locationsData.find(l => l.name === locationName)
+  const locationText = gps.lat + "," + gps.lng;
+  const loc = locationsData.find(l => l.name === locationName);
 
   if (loc) {
-    const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng)
+    const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
     if (dist > (loc.radius || 300)) {
       playSound("ERROR"); speak("อยู่นอกพื้นที่");
       alert("❌ อยู่นอกพื้นที่");
       isProcessing = false; startScanLoop();
-      return
+      return;
     }
   }
 
   if (!confirm(`ยืนยัน ${type}\n${user.name}`)) {
     isProcessing = false; startScanLoop();
-    return
+    return;
   }
 
   status.innerText = "⏳ กำลังบันทึกข้อมูล...";
 
-  // 📸 จับภาพเตรียมไว้
+  // 📸 1. จับภาพ (ลดขนาดลงเพื่อความเสถียรสูงสุด)
   const imageBase64 = captureImage();
 
-  // 🔵 ขั้นตอนที่ 1: บันทึกข้อมูลตัวหนังสือ (ใช้ API ตัวเดิมที่ใช้งานได้)
   try {
+    // 🔵 2. บันทึกข้อมูลตัวหนังสือลง Sheet
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
@@ -346,56 +344,48 @@ async function confirmAttendance(user) {
       })
     });
 
-    // 🟢 ขั้นตอนที่ 2: บันทึกรูปภาพลง Drive (แยก Fetch อีกตัว)
-// --- ส่วนที่ส่งรูปภาพใน confirmAttendance ---
-// ในฟังก์ชัน confirmAttendance ส่วนที่ส่งรูป
-status.innerText = "📸 กำลังบันทึกรูปภาพ...";
+    // 🟢 3. บันทึกรูปภาพลง Drive (ส่งแบบ Form URL Encoded)
+    status.innerText = "📸 กำลังส่งรูปภาพ...";
+    const imgParams = new URLSearchParams();
+    imgParams.append("action", "uploadImage");
+    imgParams.append("studentId", user.studentId);
+    imgParams.append("image", imageBase64);
 
-// ใช้ FormData แบบ URLSearchParams จะเสถียรกว่าการส่ง JSON สำหรับข้อมูลภาพขนาดใหญ่
-const imgParams = new URLSearchParams();
-imgParams.append("action", "uploadImage");
-imgParams.append("studentId", user.studentId);
-imgParams.append("image", imageBase64);
+    await fetch(API_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: imgParams.toString()
+    });
 
-await fetch(API_URL, {
-  method: "POST",
-  mode: "no-cors", // จำเป็นสำหรับ Google Apps Script
-  headers: { "Content-Type": "application/x-www-form-urlencoded" },
-  body: imgParams.toString()
-});
+    // 🏁 4. จบการทำงาน แจ้งผล
+    playSound(type);
+    if (type === "IN") speak("สวัสดี " + user.name);
+    else speak("ลาก่อน " + user.name);
 
-// แจ้งสำเร็จและรีโหลด
-playSound(type);
-alert("✅ บันทึกข้อมูลและรูปภาพสำเร็จ");
-location.reload();
-    // สำเร็จทั้งหมด
-    playSound(type)
-    if (type === "IN") speak("สวัสดี " + user.name)
-    else speak("ลาก่อน " + user.name)
-
-    alert("✅ บันทึกข้อมูลและรูปภาพสำเร็จ")
-    location.reload()
+    alert("✅ บันทึกข้อมูลและรูปภาพสำเร็จ");
+    location.reload();
 
   } catch (err) {
-    console.error(err)
-    alert("❌ เกิดข้อผิดพลาด")
-    isProcessing = false; startScanLoop();
+    console.error(err);
+    alert("❌ เกิดข้อผิดพลาด กรุณาลองใหม่");
+    isProcessing = false;
+    startScanLoop();
   }
 }
 
+// ปรับขนาดภาพให้เล็กลงเพื่อประหยัด bandwidth และลดโอกาสพัง
 function captureImage() {
   const canvas = document.createElement("canvas");
-  // ใช้ขนาดเล็กเพื่อความรวดเร็วในการส่งข้อมูล
-  canvas.width = 160; 
-  canvas.height = 120;
+  canvas.width = 120; // ลดจาก 160 เป็น 120
+  canvas.height = 90;  // ลดจาก 120 เป็น 90
   const ctx = canvas.getContext("2d");
 
-  // กลับด้านรูป (Mirror) ให้เหมือนหน้าจอ
   ctx.translate(canvas.width, 0);
   ctx.scale(-1, 1);
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  return canvas.toDataURL("image/jpeg", 0.3); // บีบอัดระดับ 0.3
+  return canvas.toDataURL("image/jpeg", 0.2); // ลดคุณภาพเหลือ 0.2
 }
 </script>
 
