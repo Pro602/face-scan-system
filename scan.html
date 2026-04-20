@@ -213,7 +213,7 @@ function startScanLoop(){
   if(scanInterval) clearInterval(scanInterval);
 
   scanInterval = setInterval(async () => {
-    // 🛑 ล็อคขั้นที่ 1: ถ้ากำลังยืนยันหรือบันทึกอยู่ ให้หยุดการสแกนใบหน้าถัดไปทันที
+    // 🛑 หยุดสแกนทันทีถ้ากำลังประมวลผลอยู่ เพื่อไม่ให้เด้งยืนยันซ้ำ
     if (isProcessing) return;
 
     const detection = await faceapi
@@ -223,6 +223,7 @@ function startScanLoop(){
 
     if (!detection) return;
 
+    // 🔥 การตรวจสอบ Challenge เดิมของคุณ
     const nose = detection.landmarks.getNose();
     const noseX = nose[3].x;
     const faceCenter = detection.detection.box.x + detection.detection.box.width / 2;
@@ -239,8 +240,7 @@ function startScanLoop(){
     const best = findBestMatch(detection.descriptor);
 
     if (best && best.distance < MATCH_THRESHOLD) {
-      // 🚀 จุดที่แก้ไข: ล็อคสถานะและ "หยุด Loop การสแกน" ทันทีที่เจอหน้า
-      // วิธีนี้จะทำให้หน้าจอยืนยันเด้งขึ้นมาเพียง "ครั้งเดียว" เท่านั้น
+      // 🚀 ล็อคสถานะและหยุด Loop ทันที เพื่อป้องกันการกดตกลงซ้ำ
       isProcessing = true; 
       clearInterval(scanInterval); 
       confirmAttendance(best);
@@ -315,31 +315,31 @@ async function confirmAttendance(user) {
     const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
     const radius = loc.radius || 300;
     if (locationName !== "ทำงานนอกสถานที่" && dist > radius) {
-      playSound("ERROR");
-      speak("อยู่นอกพื้นที่");
+      playSound("ERROR"); speak("อยู่นอกพื้นที่");
       alert("❌ คุณอยู่ห่างจาก " + locationName + " ประมาณ " + Math.round(dist) + " เมตร");
       isProcessing = false; startScanLoop(); return;
     }
   }
 
-  // 🛑 หน้าต่างยืนยันจะเด้งแค่ครั้งเดียว เพราะเราสั่ง clearInterval ไว้ด้านบนแล้ว
+  // สร้าง Key พิเศษเพื่อระบุแถวที่ต้องการบันทึกรูปภาพ
+  const uniqueKey = "ID-" + Date.now();
+
   if (!confirm(`ยืนยัน ${type}\n${user.name}`)) {
-    isProcessing = false; 
-    startScanLoop(); // ถ้ากด Cancel ให้กลับไปเริ่มสแกนใหม่
-    return;
+    isProcessing = false; startScanLoop(); return;
   }
 
   status.innerText = "⏳ กำลังบันทึกข้อมูล...";
   const imageBase64 = captureImage();
 
   try {
-    // 🔵 1. ส่งข้อมูลตัวหนังสือ (โครงสร้างเดิม)
+    // 🔵 1. บันทึกข้อมูลพนักงานพร้อม Unique Key
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "attendance",
+        uniqueKey: uniqueKey, // ส่ง Key นี้ไปที่ Sheets ด้วย
         studentId: user.studentId,
         name: user.name,
         department: user.class,
@@ -349,12 +349,14 @@ async function confirmAttendance(user) {
       })
     });
 
-    await new Promise(resolve => setTimeout(resolve, 1500)); // เพิ่มเวลาเป็น 1.5 วินาทีเพื่อให้ Sheets สร้าง Row ทัน
+    // ⏱ หน่วงเวลา 2 วินาทีเพื่อให้ Sheets มีเวลาเขียน Row ให้เสร็จก่อนส่งรูป
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // 🟢 2. ส่งรูปภาพ (โครงสร้างเดิม)
+    // 🟢 2. บันทึกรูปภาพโดยใช้ Unique Key อ้างอิงแถวเดิม
     status.innerText = "📸 กำลังบันทึกรูปภาพ...";
     const params = new URLSearchParams();
     params.append("action", "uploadImage");
+    params.append("uniqueKey", uniqueKey); // ระบุว่าให้ใส่รูปในแถวที่มี Key ตรงกัน
     params.append("studentId", user.studentId);
     params.append("image", imageBase64);
 
@@ -366,10 +368,9 @@ async function confirmAttendance(user) {
 
     playSound(type);
     
-    // แจ้งเตือนสำเร็จและ Auto Redirect แบบเดิมของคุณ
     Swal.fire({
       title: 'บันทึกสำเร็จ',
-      text: 'บันทึกข้อมูลและรูปภาพเรียบร้อยแล้ว',
+      text: 'ระบบบันทึกข้อมูลและรูปภาพเรียบร้อยแล้ว',
       icon: 'success',
       confirmButtonText: 'ตกลง',
       confirmButtonColor: '#6366f1',
@@ -387,8 +388,7 @@ async function confirmAttendance(user) {
   } catch (err) {
     console.error(err);
     alert("❌ เกิดข้อผิดพลาดในการบันทึกภาพ");
-    isProcessing = false; 
-    startScanLoop();
+    isProcessing = false; startScanLoop();
   }
 }
   
