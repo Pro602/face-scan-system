@@ -261,8 +261,8 @@ function startScanLoop(){
         // 🔥 🔥 🔥 ล็อกทันทีตรงนี้ (ก่อน async อื่น)
         isProcessing = true
 
-        // 🔥 หยุด loop ทันที
-        clearInterval(scanInterval)
+  // ✅ ถ่ายรูปก่อน (สำคัญมาก)
+  const imageBase64 = captureImage()
 
         // 🔥 หยุดกล้อง
         if(video.srcObject){
@@ -326,7 +326,7 @@ function getDistance(lat1, lon1, lat2, lon2){
 }
 
 // ================= CONFIRM =================
-async function confirmAttendance(user) {
+async function confirmAttendance(user, imageBase64) {
   const type = document.getElementById("typeSelect").value;
 const locationName = document.getElementById("locationSelect").value;
 
@@ -371,7 +371,6 @@ const locationName = document.getElementById("locationSelect").value;
   }
 
   status.innerText = "⏳ กำลังบันทึกข้อมูล...";
-  const imageBase64 = captureImage();
 
   try {
     // 🔵 1. บันทึกข้อมูลตัวหนังสือ
