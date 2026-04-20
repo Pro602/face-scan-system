@@ -213,7 +213,7 @@ function startScanLoop(){
   if(scanInterval) clearInterval(scanInterval);
 
   scanInterval = setInterval(async () => {
-    // 🛑 จุดที่ 1: ถ้ากำลังประมวลผลอยู่ ให้หยุดการสแกนทันที
+    // 🛑 ล็อคขั้นที่ 1: ถ้ากำลังยืนยันหรือบันทึกอยู่ ให้หยุดการสแกนใบหน้าถัดไปทันที
     if (isProcessing) return;
 
     const detection = await faceapi
@@ -223,7 +223,6 @@ function startScanLoop(){
 
     if (!detection) return;
 
-    // 🔥 การตรวจสอบ Challenge หันหน้า (Logic เดิม)
     const nose = detection.landmarks.getNose();
     const noseX = nose[3].x;
     const faceCenter = detection.detection.box.x + detection.detection.box.width / 2;
@@ -240,13 +239,15 @@ function startScanLoop(){
     const best = findBestMatch(detection.descriptor);
 
     if (best && best.distance < MATCH_THRESHOLD) {
-      // 🚀 จุดที่ 2: ล็อคสถานะและหยุด Loop ทันทีเพื่อป้องกันการบันทึกซ้ำ
+      // 🚀 จุดที่แก้ไข: ล็อคสถานะและ "หยุด Loop การสแกน" ทันทีที่เจอหน้า
+      // วิธีนี้จะทำให้หน้าจอยืนยันเด้งขึ้นมาเพียง "ครั้งเดียว" เท่านั้น
       isProcessing = true; 
       clearInterval(scanInterval); 
       confirmAttendance(best);
     }
   }, 500);
 }
+  
 // ================= MATCH =================
 function findBestMatch(query){
   let best=null
@@ -313,7 +314,6 @@ async function confirmAttendance(user) {
   if (loc) {
     const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
     const radius = loc.radius || 300;
-
     if (locationName !== "ทำงานนอกสถานที่" && dist > radius) {
       playSound("ERROR");
       speak("อยู่นอกพื้นที่");
@@ -322,16 +322,18 @@ async function confirmAttendance(user) {
     }
   }
 
-  // จุดที่ 3: กดยืนยันชื่อพนักงาน
+  // 🛑 หน้าต่างยืนยันจะเด้งแค่ครั้งเดียว เพราะเราสั่ง clearInterval ไว้ด้านบนแล้ว
   if (!confirm(`ยืนยัน ${type}\n${user.name}`)) {
-    isProcessing = false; startScanLoop(); return;
+    isProcessing = false; 
+    startScanLoop(); // ถ้ากด Cancel ให้กลับไปเริ่มสแกนใหม่
+    return;
   }
 
   status.innerText = "⏳ กำลังบันทึกข้อมูล...";
   const imageBase64 = captureImage();
 
   try {
-    // 🔵 1. ส่งข้อมูลหลัก
+    // 🔵 1. ส่งข้อมูลตัวหนังสือ (โครงสร้างเดิม)
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
@@ -347,9 +349,9 @@ async function confirmAttendance(user) {
       })
     });
 
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 1500)); // เพิ่มเวลาเป็น 1.5 วินาทีเพื่อให้ Sheets สร้าง Row ทัน
 
-    // 🟢 2. ส่งรูปภาพ
+    // 🟢 2. ส่งรูปภาพ (โครงสร้างเดิม)
     status.innerText = "📸 กำลังบันทึกรูปภาพ...";
     const params = new URLSearchParams();
     params.append("action", "uploadImage");
@@ -359,13 +361,12 @@ async function confirmAttendance(user) {
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: params.toString()
     });
 
     playSound(type);
     
-    // แจ้งเตือนสำเร็จและเด้งกลับ Dashboard
+    // แจ้งเตือนสำเร็จและ Auto Redirect แบบเดิมของคุณ
     Swal.fire({
       title: 'บันทึกสำเร็จ',
       text: 'บันทึกข้อมูลและรูปภาพเรียบร้อยแล้ว',
@@ -386,7 +387,8 @@ async function confirmAttendance(user) {
   } catch (err) {
     console.error(err);
     alert("❌ เกิดข้อผิดพลาดในการบันทึกภาพ");
-    isProcessing = false; startScanLoop();
+    isProcessing = false; 
+    startScanLoop();
   }
 }
   
