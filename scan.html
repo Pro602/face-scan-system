@@ -283,11 +283,18 @@ function getDistance(lat1, lon1, lat2, lon2){
 }
 
 // ================= CONFIRM =================
-// ================= CONFIRM =================
 async function confirmAttendance(user) {
+  // 1. Double Lock: ป้องกันการเข้ามาซ้ำซ้อนในระดับฟังก์ชัน
+  if (isProcessing) return; 
+  isProcessing = true;
+  
+  // 2. หยุดลูปการสแกนทันที เพื่อไม่ให้ AI ไปจับหน้าคนถัดไปมาปน
+  if (scanInterval) clearInterval(scanInterval);
+
   const type = document.getElementById("typeSelect").value;
   const locationName = document.getElementById("locationSelect").value;
 
+  // ตรวจสอบสถานที่
   if (!locationName) {
     Swal.fire('แจ้งเตือน', 'กรุณาเลือกสถานที่', 'warning');
     isProcessing = false;
@@ -295,6 +302,7 @@ async function confirmAttendance(user) {
     return;
   }
 
+  // ตรวจสอบ GPS
   const gps = await getGPS();
   if (!gps.lat) {
     Swal.fire('GPS Error', 'กรุณาเปิด GPS', 'error');
@@ -306,6 +314,7 @@ async function confirmAttendance(user) {
   const locationText = gps.lat + "," + gps.lng;
   const loc = locationsData.find(l => l.name === locationName);
 
+  // ตรวจสอบระยะทาง
   if (loc && locationName !== "ทำงานนอกสถานที่") {
     const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
     const radius = loc.radius || 300;
@@ -324,7 +333,8 @@ async function confirmAttendance(user) {
   const imageBase64 = captureImage();
 
   try {
-    // 🔵 1. บันทึกข้อมูล
+    // 🔵 ขั้นตอนที่ 1: บันทึกข้อมูลตัวหนังสือ
+    // ใช้ await เพื่อให้มั่นใจว่าข้อมูลชุดแรกถูกส่งออกไปก่อน
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
@@ -340,9 +350,10 @@ async function confirmAttendance(user) {
       })
     });
 
-    await new Promise(r => setTimeout(r, 800)); // หน่วงเวลาเล็กน้อย
+    // หน่วงเวลา 1.5 วินาที เพื่อให้ Server เคลียร์คิวและป้องกัน Link รูปหลุด
+    await new Promise(r => setTimeout(r, 1500)); 
 
-    // 🟢 2. บันทึกรูปภาพ
+    // 🟢 ขั้นตอนที่ 2: บันทึกรูปภาพ
     status.innerText = "📸 กำลังบันทึกรูปภาพ...";
     const params = new URLSearchParams();
     params.append("action", "uploadImage");
@@ -355,30 +366,32 @@ async function confirmAttendance(user) {
       body: params.toString()
     });
 
-    // 🏁 จบงาน
+    // 🏁 จบงาน: แจ้งเตือนผู้ใช้
     playSound(type);
     
-    // บังคับหยุดรอด้วย Swal
+    // ใช้ await Swal เพื่อ "หยุดเวลา" จนกว่าคนจะกดปุ่ม (ช่วยให้คนเดิมมีเวลาเดินออก)
     await Swal.fire({
       title: 'บันทึกสำเร็จ',
       text: `สวัสดีคุณ ${user.name} บันทึกเรียบร้อยแล้ว`,
       icon: 'success',
       confirmButtonText: 'ตกลง',
+      confirmButtonColor: '#6366f1',
       allowOutsideClick: false
     });
 
-    // หลังจากกดตกลง ให้เคลียร์ค่า Challenge และรอ 3 วินาทีถึงจะเริ่มสแกนใหม่ได้
+    // เคลียร์ค่า Challenge และหน่วงเวลาก่อนเริ่มรับคนใหม่
     status.innerText = "เตรียมรับคนถัดไป...";
-    generateChallenge(); // สุ่มท่าทางใหม่สำหรับคนถัดไป
+    if (typeof generateChallenge === "function") generateChallenge(); 
     
     setTimeout(() => {
         isProcessing = false;
         status.innerText = "พร้อมใช้งาน";
         startScanLoop(); // กลับไปเริ่มสแกนใหม่
-    }, 3000);
+    }, 3000); // รออีก 3 วินาทีหลังจากกดปุ่ม เพื่อความชัวร์
 
   } catch (err) {
-    console.error(err);
+    console.error("Error during recording:", err);
+    Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถบันทึกได้ กรุณาลองใหม่', 'error');
     isProcessing = false;
     startScanLoop();
   }
