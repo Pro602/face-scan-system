@@ -301,20 +301,26 @@ function getDistance(lat1, lon1, lat2, lon2){
 
 // ================= CONFIRM =================
 async function confirmAttendance(user) {
+  // 1. ล็อคสถานะป้องกันการทำงานซ้ำซ้อน
+  if (isProcessing) return; 
+  isProcessing = true;
+  
+  // 2. หยุดลูปสแกนทันทีเพื่อความนิ่งของข้อมูล
+  if (scanInterval) clearInterval(scanInterval);
+
   const type = document.getElementById("typeSelect").value;
-const locationName = document.getElementById("locationSelect").value;
+  const locationName = document.getElementById("locationSelect").value;
 
   if (!locationName) {
-    alert("❌ กรุณาเลือกสถานที่");
+    Swal.fire('แจ้งเตือน', 'กรุณาเลือกสถานที่', 'warning');
     isProcessing = false;
     startScanLoop();
     return;
   }
 
   const gps = await getGPS();
-
   if (!gps.lat) {
-    alert("❌ กรุณาเปิด GPS");
+    Swal.fire('GPS Error', 'กรุณาเปิด GPS', 'error');
     isProcessing = false;
     startScanLoop();
     return;
@@ -323,32 +329,24 @@ const locationName = document.getElementById("locationSelect").value;
   const locationText = gps.lat + "," + gps.lng;
   const loc = locationsData.find(l => l.name === locationName);
 
-  if (loc) {
+  if (loc && locationName !== "ทำงานนอกสถานที่") {
     const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
     const radius = loc.radius || 300;
-
-    // --- ส่วนที่ปรับปรุง: เพิ่มเงื่อนไขยกเว้น "ทำงานนอกสถานที่" ---
-    if (locationName !== "ทำงานนอกสถานที่" && dist > radius) {
+    if (dist > radius) {
       playSound("ERROR");
       speak("อยู่นอกพื้นที่");
-
-      alert("❌ คุณอยู่ห่างจาก " + locationName + " ประมาณ " + Math.round(dist) + " เมตร (จำกัดที่ " + radius + " เมตร)");
+      Swal.fire('นอกพื้นที่', `ห่างจากจุดเช็คอิน ${Math.round(dist)} เมตร`, 'error');
       isProcessing = false;
       startScanLoop();
       return;
     }
   }
 
-  if (!confirm(`ยืนยัน ${type}\n${user.name}`)) {
-    isProcessing = false; startScanLoop();
-    return;
-  }
-
   status.innerText = "⏳ กำลังบันทึกข้อมูล...";
   const imageBase64 = captureImage();
 
   try {
-    // 🔵 1. บันทึกข้อมูลตัวหนังสือ
+    // 🔵 1. ส่งข้อมูลหลัก
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
@@ -364,52 +362,51 @@ const locationName = document.getElementById("locationSelect").value;
       })
     });
 
-    // ⏱ หน่วงเวลา 1 วินาทีเพื่อให้ Script ฝั่ง Server เคลียร์คิวงานแรก
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(r => setTimeout(r, 1500)); // หน่วงเวลาให้ Server บันทึก Row
 
-    // 🟢 2. บันทึกรูปภาพ (ใช้ URLSearchParams แบบเพียวๆ)
+    // 🟢 2. ส่งรูปภาพ
     status.innerText = "📸 กำลังบันทึกรูปภาพ...";
-    
     const params = new URLSearchParams();
     params.append("action", "uploadImage");
     params.append("studentId", user.studentId);
     params.append("image", imageBase64);
 
-    // ส่งแบบ no-cors เพื่อให้ผ่านข้อจำกัด Browser ง่ายที่สุด
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: params.toString()
     });
 
-// 🏁 จบงาน
     playSound(type);
     
-    Swal.fire({
+    // บังคับให้พนักงานกดปุ่มตกลง เพื่อดึงเวลาให้คนเดินออก
+    await Swal.fire({
       title: 'บันทึกสำเร็จ',
-      text: 'บันทึกข้อมูลและรูปภาพเรียบร้อยแล้ว',
+      text: `คุณ ${user.name} บันทึกเรียบร้อยแล้ว`,
       icon: 'success',
       confirmButtonText: 'ตกลง',
-      confirmButtonColor: '#6366f1', // สีเดียวกับปุ่มเริ่มสแกนของคุณ
-      allowOutsideClick: false // กันคนกดที่อื่นเพื่อปิด
-    }).then((result) => {
-      if (result.isConfirmed) {
-        // --- ตรรกะการเด้งกลับ ---
-        // 1. ถ้าหน้าจอนี้ถูกเปิดเป็นหน้าต่างใหม่ (target="_blank") ให้ปิดหน้าต่างนี้
-        if (window.opener) {
-            window.close();
-        } else {
-            // 2. ถ้าไม่ได้เปิดหน้าต่างใหม่ ให้ส่งกลับไปที่หน้า Dashboard เดิม
-            // เปลี่ยน URL ด้านล่างนี้เป็น URL หน้า Dashboard ของคุณ
-            window.location.href = "https://pro602.github.io/Scan/?v=1.1"; 
-        }
-      }
+      confirmButtonColor: '#6366f1',
+      allowOutsideClick: false
     });
+
+    // --- จุดที่แก้ไข: รีเซ็ตทุกอย่างก่อนเริ่มใหม่ ---
+    status.innerText = "เตรียมรับคนถัดไป...";
+    
+    // 1. รีเซ็ตสถานะ Challenge (หันซ้าย-ขวา) ให้เป็นค่าเริ่มต้น
+    challengePassed = false; 
+    if (typeof generateChallenge === "function") {
+        generateChallenge(); 
+    }
+
+    // 2. หน่วงเวลา 3 วินาทีก่อนเปิดระบบสแกนใหม่
+    setTimeout(() => {
+        isProcessing = false;
+        status.innerText = "พร้อมสำหรับการสแกน";
+        startScanLoop(); 
+    }, 3000);
 
   } catch (err) {
     console.error(err);
-    alert("❌ เกิดข้อผิดพลาดในการบันทึกภาพ");
     isProcessing = false;
     startScanLoop();
   }
