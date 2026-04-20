@@ -96,6 +96,7 @@ let isProcessing = false
 // 🔥 กันรูป
 let challenge = ""
 let challengePassed = false
+let isDetecting = false   // 🔥 ตัวนี้สำคัญ
 
 const MATCH_THRESHOLD = 0.45
 
@@ -213,11 +214,9 @@ function startScanLoop(){
 
   if(scanInterval) clearInterval(scanInterval)
 
-  let isDetecting = false // 🔥 กัน async ซ้อน
-
   scanInterval = setInterval(async () => {
 
-    // 🔒 กันยิงซ้ำทุกกรณี
+    // 🔒 กันทุกกรณี (ตัวนี้คือหัวใจ)
     if(isProcessing || isDetecting) return
 
     isDetecting = true
@@ -225,7 +224,7 @@ function startScanLoop(){
     try {
 
       const detection = await faceapi
-        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+        .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
         .withFaceLandmarks()
         .withFaceDescriptor()
 
@@ -234,7 +233,7 @@ function startScanLoop(){
         return
       }
 
-      // 🔥 ตรวจหันหน้า (ของเดิม)
+      // ===== LIVENESS =====
       const nose = detection.landmarks.getNose()
       const noseX = nose[3].x
       const faceCenter = detection.detection.box.x + detection.detection.box.width/2
@@ -259,13 +258,13 @@ function startScanLoop(){
 
       if(best && best.distance < MATCH_THRESHOLD){
 
-        // 🔥 ล็อกทันที
+        // 🔥 🔥 🔥 ล็อกทันทีตรงนี้ (ก่อน async อื่น)
         isProcessing = true
 
-        // 🔥 หยุด loop ก่อน (สำคัญมาก)
+        // 🔥 หยุด loop ทันที
         clearInterval(scanInterval)
 
-        // 🔥 หยุดกล้องกันเฟรมใหม่
+        // 🔥 หยุดกล้อง
         if(video.srcObject){
           video.srcObject.getTracks().forEach(t => t.stop())
         }
