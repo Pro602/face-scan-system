@@ -210,44 +210,51 @@ function startCamera(){
 
 // ================= SCAN =================
 function startScanLoop(){
-  if(scanInterval) clearInterval(scanInterval);
 
-  scanInterval = setInterval(async () => {
-    // 🛑 หยุดสแกนทันทีถ้ากำลังประมวลผลอยู่ เพื่อไม่ให้เด้งยืนยันซ้ำ
-    if (isProcessing) return;
+  if(scanInterval) clearInterval(scanInterval)
+
+  scanInterval=setInterval(async()=>{
+
+    if(isProcessing) return
 
     const detection = await faceapi
-      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+      .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
       .withFaceLandmarks()
-      .withFaceDescriptor();
+      .withFaceDescriptor()
 
-    if (!detection) return;
+    if(!detection) return
 
-    // 🔥 การตรวจสอบ Challenge เดิมของคุณ
-    const nose = detection.landmarks.getNose();
-    const noseX = nose[3].x;
-    const faceCenter = detection.detection.box.x + detection.detection.box.width / 2;
+    // 🔥 ตรวจหันหน้า (กันรูป)
+    const nose = detection.landmarks.getNose()
+    const noseX = nose[3].x
+    const faceCenter = detection.detection.box.x + detection.detection.box.width/2
 
-    if (!challengePassed) {
-      if ((challenge === "LEFT" && noseX < faceCenter - 10) || 
-          (challenge === "RIGHT" && noseX > faceCenter + 10)) {
-        challengePassed = true;
-        status.innerText = "✅ ผ่านการตรวจสอบ";
+    if(!challengePassed){
+
+      if(challenge==="LEFT" && noseX < faceCenter - 10){
+        challengePassed = true
+        status.innerText="✅ ผ่านการตรวจสอบ"
       }
-      return;
+
+      if(challenge==="RIGHT" && noseX > faceCenter + 10){
+        challengePassed = true
+        status.innerText="✅ ผ่านการตรวจสอบ"
+      }
+
+      return
     }
 
-    const best = findBestMatch(detection.descriptor);
+    const best = findBestMatch(detection.descriptor)
 
-    if (best && best.distance < MATCH_THRESHOLD) {
-      // 🚀 ล็อคสถานะและหยุด Loop ทันที เพื่อป้องกันการกดตกลงซ้ำ
-      isProcessing = true; 
-      clearInterval(scanInterval); 
-      confirmAttendance(best);
+    if(best && best.distance < MATCH_THRESHOLD){
+      isProcessing = true
+      clearInterval(scanInterval)
+      confirmAttendance(best)
     }
-  }, 500);
+
+  },500)
 }
-  
+
 // ================= MATCH =================
 function findBestMatch(query){
   let best=null
@@ -295,17 +302,22 @@ function getDistance(lat1, lon1, lat2, lon2){
 // ================= CONFIRM =================
 async function confirmAttendance(user) {
   const type = document.getElementById("typeSelect").value;
-  const locationName = document.getElementById("locationSelect").value;
+const locationName = document.getElementById("locationSelect").value;
 
   if (!locationName) {
     alert("❌ กรุณาเลือกสถานที่");
-    isProcessing = false; startScanLoop(); return;
+    isProcessing = false;
+    startScanLoop();
+    return;
   }
 
   const gps = await getGPS();
+
   if (!gps.lat) {
     alert("❌ กรุณาเปิด GPS");
-    isProcessing = false; startScanLoop(); return;
+    isProcessing = false;
+    startScanLoop();
+    return;
   }
 
   const locationText = gps.lat + "," + gps.lng;
@@ -314,32 +326,35 @@ async function confirmAttendance(user) {
   if (loc) {
     const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
     const radius = loc.radius || 300;
+
+    // --- ส่วนที่ปรับปรุง: เพิ่มเงื่อนไขยกเว้น "ทำงานนอกสถานที่" ---
     if (locationName !== "ทำงานนอกสถานที่" && dist > radius) {
-      playSound("ERROR"); speak("อยู่นอกพื้นที่");
-      alert("❌ คุณอยู่ห่างจาก " + locationName + " ประมาณ " + Math.round(dist) + " เมตร");
-      isProcessing = false; startScanLoop(); return;
+      playSound("ERROR");
+      speak("อยู่นอกพื้นที่");
+
+      alert("❌ คุณอยู่ห่างจาก " + locationName + " ประมาณ " + Math.round(dist) + " เมตร (จำกัดที่ " + radius + " เมตร)");
+      isProcessing = false;
+      startScanLoop();
+      return;
     }
   }
 
-  // สร้าง Key พิเศษเพื่อระบุแถวที่ต้องการบันทึกรูปภาพ
-  const uniqueKey = "ID-" + Date.now();
-
   if (!confirm(`ยืนยัน ${type}\n${user.name}`)) {
-    isProcessing = false; startScanLoop(); return;
+    isProcessing = false; startScanLoop();
+    return;
   }
 
   status.innerText = "⏳ กำลังบันทึกข้อมูล...";
   const imageBase64 = captureImage();
 
   try {
-    // 🔵 1. บันทึกข้อมูลพนักงานพร้อม Unique Key
+    // 🔵 1. บันทึกข้อมูลตัวหนังสือ
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "attendance",
-        uniqueKey: uniqueKey, // ส่ง Key นี้ไปที่ Sheets ด้วย
         studentId: user.studentId,
         name: user.name,
         department: user.class,
@@ -349,37 +364,44 @@ async function confirmAttendance(user) {
       })
     });
 
-    // ⏱ หน่วงเวลา 2 วินาทีเพื่อให้ Sheets มีเวลาเขียน Row ให้เสร็จก่อนส่งรูป
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // ⏱ หน่วงเวลา 1 วินาทีเพื่อให้ Script ฝั่ง Server เคลียร์คิวงานแรก
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // 🟢 2. บันทึกรูปภาพโดยใช้ Unique Key อ้างอิงแถวเดิม
+    // 🟢 2. บันทึกรูปภาพ (ใช้ URLSearchParams แบบเพียวๆ)
     status.innerText = "📸 กำลังบันทึกรูปภาพ...";
+    
     const params = new URLSearchParams();
     params.append("action", "uploadImage");
-    params.append("uniqueKey", uniqueKey); // ระบุว่าให้ใส่รูปในแถวที่มี Key ตรงกัน
     params.append("studentId", user.studentId);
     params.append("image", imageBase64);
 
+    // ส่งแบบ no-cors เพื่อให้ผ่านข้อจำกัด Browser ง่ายที่สุด
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: params.toString()
     });
 
+// 🏁 จบงาน
     playSound(type);
     
     Swal.fire({
       title: 'บันทึกสำเร็จ',
-      text: 'ระบบบันทึกข้อมูลและรูปภาพเรียบร้อยแล้ว',
+      text: 'บันทึกข้อมูลและรูปภาพเรียบร้อยแล้ว',
       icon: 'success',
       confirmButtonText: 'ตกลง',
-      confirmButtonColor: '#6366f1',
-      allowOutsideClick: false
+      confirmButtonColor: '#6366f1', // สีเดียวกับปุ่มเริ่มสแกนของคุณ
+      allowOutsideClick: false // กันคนกดที่อื่นเพื่อปิด
     }).then((result) => {
       if (result.isConfirmed) {
+        // --- ตรรกะการเด้งกลับ ---
+        // 1. ถ้าหน้าจอนี้ถูกเปิดเป็นหน้าต่างใหม่ (target="_blank") ให้ปิดหน้าต่างนี้
         if (window.opener) {
             window.close();
         } else {
+            // 2. ถ้าไม่ได้เปิดหน้าต่างใหม่ ให้ส่งกลับไปที่หน้า Dashboard เดิม
+            // เปลี่ยน URL ด้านล่างนี้เป็น URL หน้า Dashboard ของคุณ
             window.location.href = "https://pro602.github.io/Scan/?v=1.1"; 
         }
       }
@@ -388,10 +410,10 @@ async function confirmAttendance(user) {
   } catch (err) {
     console.error(err);
     alert("❌ เกิดข้อผิดพลาดในการบันทึกภาพ");
-    isProcessing = false; startScanLoop();
+    isProcessing = false;
+    startScanLoop();
   }
 }
-  
 // ปรับให้ภาพเล็กลงที่สุดเพื่อความชัวร์ (120x90, คุณภาพ 0.1)
 function captureImage() {
   const canvas = document.createElement("canvas");
