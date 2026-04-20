@@ -215,7 +215,7 @@ function startScanLoop(){
 
   scanInterval = setInterval(async () => {
 
-    // 🔒 LOCK ทุกกรณี
+    // 🔒 กันทุกกรณี
     if(isProcessing || isLocked || faceCaptured) return
 
     isLocked = true
@@ -232,19 +232,22 @@ function startScanLoop(){
         return
       }
 
-      // ===== Anti-spoof =====
+      // ===== Anti-spoof (ปรับใหม่ให้เสถียร) =====
       const nose = detection.landmarks.getNose()
       const noseX = nose[3].x
       const faceCenter = detection.detection.box.x + detection.detection.box.width/2
 
+      const diff = noseX - faceCenter
+
       if(!challengePassed){
 
-        if(challenge==="LEFT" && noseX < faceCenter - 10){
+        // 🔥 ขยาย threshold ให้ใช้งานจริงได้
+        if(challenge==="LEFT" && diff < -15){
           challengePassed = true
           status.innerText="✅ ผ่านการตรวจสอบ"
         }
 
-        if(challenge==="RIGHT" && noseX > faceCenter + 10){
+        if(challenge==="RIGHT" && diff > 15){
           challengePassed = true
           status.innerText="✅ ผ่านการตรวจสอบ"
         }
@@ -257,13 +260,14 @@ function startScanLoop(){
 
       if(best && best.distance < MATCH_THRESHOLD){
 
-        // 🔥 หยุดทุกอย่างทันที
+        // 🔥 LOCK ทุกอย่างก่อนเรียก confirm
         faceCaptured = true
         isProcessing = true
+        isLocked = true
 
         clearInterval(scanInterval)
 
-        // 🔥 หยุดกล้องทันที (กันเฟรมใหม่)
+        // 🔥 หยุดกล้องทันที
         if(video.srcObject){
           video.srcObject.getTracks().forEach(t => t.stop())
         }
@@ -278,8 +282,9 @@ function startScanLoop(){
 
     isLocked = false
 
-  }, 400) // ลด delay ให้เร็วขึ้นนิด
+  }, 500)
 }
+  
 // ================= MATCH =================
 function findBestMatch(query){
   let best=null
@@ -327,73 +332,72 @@ function getDistance(lat1, lon1, lat2, lon2){
 // ================= CONFIRM =================
 async function confirmAttendance(user) {
 
-  // 🔒 กันเรียกซ้ำซ้อน
-  if (isProcessing) return;
-
   const type = document.getElementById("typeSelect").value;
   const locationName = document.getElementById("locationSelect").value;
 
   if (!locationName) {
-    alert("❌ กรุณาเลือกสถานที่");
+    alert("❌ กรุณาเลือกสถานที่")
 
-    isProcessing = false;
-    isLocked = false;
-    faceCaptured = false;
+    isProcessing = false
+    isLocked = false
+    faceCaptured = false
 
-    startScanLoop();
-    return;
+    startScanLoop()
+    return
   }
 
-  const gps = await getGPS();
+  const gps = await getGPS()
 
   if (!gps.lat) {
-    alert("❌ กรุณาเปิด GPS");
+    alert("❌ กรุณาเปิด GPS")
 
-    isProcessing = false;
-    isLocked = false;
-    faceCaptured = false;
+    isProcessing = false
+    isLocked = false
+    faceCaptured = false
 
-    startScanLoop();
-    return;
+    startScanLoop()
+    return
   }
 
-  const locationText = gps.lat + "," + gps.lng;
-  const loc = locationsData.find(l => l.name === locationName);
+  const locationText = gps.lat + "," + gps.lng
+  const loc = locationsData.find(l => l.name === locationName)
 
   if (loc) {
-    const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
-    const radius = loc.radius || 300;
+    const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng)
+    const radius = loc.radius || 300
 
     if (locationName !== "ทำงานนอกสถานที่" && dist > radius) {
-      playSound("ERROR");
-      speak("อยู่นอกพื้นที่");
 
-      alert("❌ คุณอยู่ห่างจาก " + locationName + " ประมาณ " + Math.round(dist) + " เมตร (จำกัดที่ " + radius + " เมตร)");
+      playSound("ERROR")
+      speak("อยู่นอกพื้นที่")
 
-      isProcessing = false;
-      isLocked = false;
-      faceCaptured = false;
+      alert(`❌ คุณอยู่ห่างจาก ${locationName} ${Math.round(dist)} เมตร`)
 
-      startScanLoop();
-      return;
+      isProcessing = false
+      isLocked = false
+      faceCaptured = false
+
+      startScanLoop()
+      return
     }
   }
 
+  // 🔥 LOCK ตรงนี้ก่อน confirm
   if (!confirm(`ยืนยัน ${type}\n${user.name}`)) {
-    isProcessing = false;
-    isLocked = false;
-    faceCaptured = false;
 
-    startScanLoop();
-    return;
+    isProcessing = false
+    isLocked = false
+    faceCaptured = false
+
+    startScanLoop()
+    return
   }
 
-  status.innerText = "⏳ กำลังบันทึกข้อมูล...";
-  const imageBase64 = captureImage();
+  status.innerText = "⏳ กำลังบันทึกข้อมูล..."
+  const imageBase64 = captureImage()
 
   try {
 
-    // 🔵 1. บันทึกข้อมูล
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
@@ -407,57 +411,48 @@ async function confirmAttendance(user) {
         location: locationText,
         locationName: locationName
       })
-    });
+    })
 
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(r => setTimeout(r, 1000))
 
-    // 🟢 2. บันทึกรูป
-    status.innerText = "📸 กำลังบันทึกรูปภาพ...";
+    status.innerText = "📸 กำลังบันทึกรูปภาพ..."
 
-    const params = new URLSearchParams();
-    params.append("action", "uploadImage");
-    params.append("studentId", user.studentId);
-    params.append("image", imageBase64);
+    const params = new URLSearchParams()
+    params.append("action", "uploadImage")
+    params.append("studentId", user.studentId)
+    params.append("image", imageBase64)
 
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: params.toString()
-    });
+    })
 
-    // 🏁 SUCCESS
-    playSound(type);
+    playSound(type)
 
     await Swal.fire({
       title: 'บันทึกสำเร็จ',
-      text: 'บันทึกข้อมูลและรูปภาพเรียบร้อยแล้ว',
       icon: 'success',
-      confirmButtonText: 'ตกลง',
-      confirmButtonColor: '#6366f1',
-      allowOutsideClick: false
-    });
+      confirmButtonText: 'ตกลง'
+    })
 
-    // 🔓 ปลด lock ครบทุกตัว (สำคัญมาก)
-    isProcessing = false;
-    isLocked = false;
-    faceCaptured = false;
+    // 🔓 reset ก่อนออก
+    isProcessing = false
+    isLocked = false
+    faceCaptured = false
 
-    if (window.opener) {
-      window.close();
-    } else {
-      window.location.href = "https://pro602.github.io/Scan/?v=1.1";
-    }
+    window.location.href = "https://pro602.github.io/Scan/?v=1.1"
 
   } catch (err) {
-    console.error(err);
-    alert("❌ เกิดข้อผิดพลาดในการบันทึกภาพ");
+    console.error(err)
+    alert("❌ บันทึกล้มเหลว")
 
-    isProcessing = false;
-    isLocked = false;
-    faceCaptured = false;
+    isProcessing = false
+    isLocked = false
+    faceCaptured = false
 
-    startScanLoop();
+    startScanLoop()
   }
 }
   
