@@ -96,7 +96,11 @@ let isProcessing = false
 // 🔥 กันรูป
 let challenge = ""
 let challengePassed = false
+let isLocked = false
+let faceCaptured = false
 
+let turnScore = 0
+const TURN_PASS_SCORE = 3
 const MATCH_THRESHOLD = 0.45
 
 // ================= AUDIO =================
@@ -215,7 +219,7 @@ function startScanLoop(){
 
   scanInterval = setInterval(async () => {
 
-    // 🔒 กันทุกกรณี
+    // 🔒 กันทุกกรณี (สำคัญมาก)
     if(isProcessing || isLocked || faceCaptured) return
 
     isLocked = true
@@ -227,47 +231,58 @@ function startScanLoop(){
         .withFaceLandmarks()
         .withFaceDescriptor()
 
+      // ❌ ไม่เจอหน้า
       if(!detection){
         isLocked = false
         return
       }
 
-      // ===== Anti-spoof (ปรับใหม่ให้เสถียร) =====
+      // ================= LIVENESS (หันหน้า) =================
       const nose = detection.landmarks.getNose()
       const noseX = nose[3].x
-      const faceCenter = detection.detection.box.x + detection.detection.box.width/2
+      const faceCenter = detection.detection.box.x + detection.detection.box.width / 2
 
       const diff = noseX - faceCenter
 
       if(!challengePassed){
 
-        // 🔥 ขยาย threshold ให้ใช้งานจริงได้
-        if(challenge==="LEFT" && diff < -15){
-          challengePassed = true
-          status.innerText="✅ ผ่านการตรวจสอบ"
+        // 👉 สะสมคะแนน (กัน fail จาก frame เดียว)
+        if(challenge === "LEFT" && diff < -10){
+          turnScore++
+        } 
+        else if(challenge === "RIGHT" && diff > 10){
+          turnScore++
+        } 
+        else {
+          // ลด score ถ้ากลับมาตรง
+          turnScore = Math.max(0, turnScore - 1)
         }
 
-        if(challenge==="RIGHT" && diff > 15){
+        status.innerText = `👉 กรุณาหัน${challenge==="LEFT"?"ซ้าย":"ขวา"} (${turnScore}/${TURN_PASS_SCORE})`
+
+        // ✅ ผ่าน
+        if(turnScore >= TURN_PASS_SCORE){
           challengePassed = true
-          status.innerText="✅ ผ่านการตรวจสอบ"
+          status.innerText = "✅ ผ่านการตรวจสอบ"
         }
 
         isLocked = false
         return
       }
 
+      // ================= MATCH =================
       const best = findBestMatch(detection.descriptor)
 
       if(best && best.distance < MATCH_THRESHOLD){
 
-        // 🔥 LOCK ทุกอย่างก่อนเรียก confirm
+        // 🔥 LOCK ทั้งระบบทันที
         faceCaptured = true
         isProcessing = true
         isLocked = true
 
         clearInterval(scanInterval)
 
-        // 🔥 หยุดกล้องทันที
+        // 🔥 หยุดกล้องทันที (กันเฟรมซ้ำ)
         if(video.srcObject){
           video.srcObject.getTracks().forEach(t => t.stop())
         }
@@ -277,9 +292,10 @@ function startScanLoop(){
       }
 
     } catch(err){
-      console.error(err)
+      console.error("SCAN ERROR:", err)
     }
 
+    // 🔓 ปลด lock รอบนี้
     isLocked = false
 
   }, 500)
