@@ -97,6 +97,7 @@ let isProcessing = false
 let challenge = ""
 let challengePassed = false
 let isDetecting = false   // 🔥 ตัวนี้สำคัญ
+let faceCaptured = false
 
 const MATCH_THRESHOLD = 0.45
 
@@ -211,74 +212,41 @@ function startCamera(){
 
 // ================= SCAN =================
 function startScanLoop(){
+  if(scanInterval) clearInterval(scanInterval);
 
-  if(scanInterval) clearInterval(scanInterval)
+  scanInterval = setInterval(async () => {
+    if (isProcessing) return; // 🛑 ล็อคป้องกันการสแกนซ้อน
 
-  scanInterval = setInterval(async()=>{
+    const detection = await faceapi
+      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+      .withFaceLandmarks()
+      .withFaceDescriptor();
 
-    // 🔒 กันทุกกรณี (สำคัญมาก)
-    if(isProcessing || faceCaptured) return
+    if (!detection) return;
 
-    try{
+    // 🔥 การตรวจสอบ Challenge เดิมของคุณ
+    const nose = detection.landmarks.getNose();
+    const noseX = nose[3].x;
+    const faceCenter = detection.detection.box.x + detection.detection.box.width / 2;
 
-      const detection = await faceapi
-        .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
-        .withFaceLandmarks()
-        .withFaceDescriptor()
-
-      if(!detection) return
-
-      // ===============================
-      // 🔥 กันรูป (หันหน้า)
-      // ===============================
-      const nose = detection.landmarks.getNose()
-      const noseX = nose[3].x
-      const faceCenter = detection.detection.box.x + detection.detection.box.width/2
-
-      if(!challengePassed){
-
-        if(challenge==="LEFT" && noseX < faceCenter - 15){
-          challengePassed = true
-          status.innerText="✅ ผ่านการตรวจสอบ"
-        }
-
-        if(challenge==="RIGHT" && noseX > faceCenter + 15){
-          challengePassed = true
-          status.innerText="✅ ผ่านการตรวจสอบ"
-        }
-
-        return
+    if (!challengePassed) {
+      if ((challenge === "LEFT" && noseX < faceCenter - 10) || 
+          (challenge === "RIGHT" && noseX > faceCenter + 10)) {
+        challengePassed = true;
+        status.innerText = "✅ ผ่านการตรวจสอบ";
       }
-
-      // ===============================
-      // 🔍 หาใบหน้า
-      // ===============================
-      const best = findBestMatch(detection.descriptor)
-
-      if(best && best.distance < MATCH_THRESHOLD){
-
-        // 🔥 LOCK ครั้งเดียวจบ
-        faceCaptured = true
-        isProcessing = true
-
-        // 🔥 หยุด loop ทันที (กันยิงซ้ำ)
-        clearInterval(scanInterval)
-
-        // 🔥 delay นิดเดียวให้ภาพยังอยู่
-        setTimeout(async ()=>{
-
-          await confirmAttendance(best)
-
-        }, 200) // <-- สำคัญมาก (กันภาพดำ)
-
-        return
-      }
-
-    }catch(err){
-      console.error(err)
+      return;
     }
 
-  },400)
+    const best = findBestMatch(detection.descriptor);
+
+    if (best && best.distance < MATCH_THRESHOLD) {
+      // 🚀 หยุด Loop ทันทีที่เจอหน้า เพื่อไม่ให้หน้าต่างยืนยันเด้งซ้ำ
+      isProcessing = true; 
+      clearInterval(scanInterval); 
+      confirmAttendance(best);
+    }
+  }, 500);
 }
   
 // ================= MATCH =================
