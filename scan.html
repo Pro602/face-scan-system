@@ -213,48 +213,75 @@ function startScanLoop(){
 
   if(scanInterval) clearInterval(scanInterval)
 
-  scanInterval=setInterval(async()=>{
+  let isDetecting = false // 🔥 กัน async ซ้อน
 
-    if(isProcessing) return
+  scanInterval = setInterval(async () => {
 
-    const detection = await faceapi
-      .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
-      .withFaceLandmarks()
-      .withFaceDescriptor()
+    // 🔒 กันยิงซ้ำทุกกรณี
+    if(isProcessing || isDetecting) return
 
-    if(!detection) return
+    isDetecting = true
 
-    // 🔥 ตรวจหันหน้า (กันรูป)
-    const nose = detection.landmarks.getNose()
-    const noseX = nose[3].x
-    const faceCenter = detection.detection.box.x + detection.detection.box.width/2
+    try {
 
-    if(!challengePassed){
+      const detection = await faceapi
+        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor()
 
-      if(challenge==="LEFT" && noseX < faceCenter - 10){
-        challengePassed = true
-        status.innerText="✅ ผ่านการตรวจสอบ"
+      if(!detection){
+        isDetecting = false
+        return
       }
 
-      if(challenge==="RIGHT" && noseX > faceCenter + 10){
-        challengePassed = true
-        status.innerText="✅ ผ่านการตรวจสอบ"
+      // 🔥 ตรวจหันหน้า (ของเดิม)
+      const nose = detection.landmarks.getNose()
+      const noseX = nose[3].x
+      const faceCenter = detection.detection.box.x + detection.detection.box.width/2
+
+      if(!challengePassed){
+
+        if(challenge==="LEFT" && noseX < faceCenter - 10){
+          challengePassed = true
+          status.innerText="✅ ผ่านการตรวจสอบ"
+        }
+
+        if(challenge==="RIGHT" && noseX > faceCenter + 10){
+          challengePassed = true
+          status.innerText="✅ ผ่านการตรวจสอบ"
+        }
+
+        isDetecting = false
+        return
       }
 
-      return
+      const best = findBestMatch(detection.descriptor)
+
+      if(best && best.distance < MATCH_THRESHOLD){
+
+        // 🔥 ล็อกทันที
+        isProcessing = true
+
+        // 🔥 หยุด loop ก่อน (สำคัญมาก)
+        clearInterval(scanInterval)
+
+        // 🔥 หยุดกล้องกันเฟรมใหม่
+        if(video.srcObject){
+          video.srcObject.getTracks().forEach(t => t.stop())
+        }
+
+        await confirmAttendance(best)
+        return
+      }
+
+    } catch(err){
+      console.error(err)
     }
 
-    const best = findBestMatch(detection.descriptor)
+    isDetecting = false
 
-    if(best && best.distance < MATCH_THRESHOLD){
-      isProcessing = true
-      clearInterval(scanInterval)
-      confirmAttendance(best)
-    }
-
-  },500)
+  }, 500)
 }
-
 // ================= MATCH =================
 function findBestMatch(query){
   let best=null
