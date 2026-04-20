@@ -301,20 +301,26 @@ function getDistance(lat1, lon1, lat2, lon2){
 
 // ================= CONFIRM =================
 async function confirmAttendance(user) {
+  // 1. ดักหน้าประตู: ถ้ากำลังประมวลผลอยู่ ให้เด้งออกไปทันที
+  if (isProcessing) return; 
+  isProcessing = true;
+
+  // 2. หยุดการสแกนใบหน้าทันที เพื่อไม่ให้เกิดการตรวจจับซ้อน
+  if (scanInterval) clearInterval(scanInterval);
+
   const type = document.getElementById("typeSelect").value;
-const locationName = document.getElementById("locationSelect").value;
+  const locationName = document.getElementById("locationSelect").value;
 
   if (!locationName) {
-    alert("❌ กรุณาเลือกสถานที่");
+    Swal.fire('แจ้งเตือน', 'กรุณาเลือกสถานที่', 'warning');
     isProcessing = false;
     startScanLoop();
     return;
   }
 
   const gps = await getGPS();
-
   if (!gps.lat) {
-    alert("❌ กรุณาเปิด GPS");
+    Swal.fire('GPS Error', 'กรุณาเปิด GPS', 'error');
     isProcessing = false;
     startScanLoop();
     return;
@@ -323,27 +329,20 @@ const locationName = document.getElementById("locationSelect").value;
   const locationText = gps.lat + "," + gps.lng;
   const loc = locationsData.find(l => l.name === locationName);
 
-  if (loc) {
+  if (loc && locationName !== "ทำงานนอกสถานที่") {
     const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
     const radius = loc.radius || 300;
-
-    // --- ส่วนที่ปรับปรุง: เพิ่มเงื่อนไขยกเว้น "ทำงานนอกสถานที่" ---
-    if (locationName !== "ทำงานนอกสถานที่" && dist > radius) {
+    if (dist > radius) {
       playSound("ERROR");
       speak("อยู่นอกพื้นที่");
-
-      alert("❌ คุณอยู่ห่างจาก " + locationName + " ประมาณ " + Math.round(dist) + " เมตร (จำกัดที่ " + radius + " เมตร)");
+      Swal.fire('นอกพื้นที่', `คุณอยู่ห่างจากจุดเช็คอิน ${Math.round(dist)} เมตร`, 'error');
       isProcessing = false;
       startScanLoop();
       return;
     }
   }
 
-  if (!confirm(`ยืนยัน ${type}\n${user.name}`)) {
-    isProcessing = false; startScanLoop();
-    return;
-  }
-
+  // --- เอา confirm(`ยืนยัน...`) แบบเก่าออก แล้วใช้สถานะบอกบนจอแทน ---
   status.innerText = "⏳ กำลังบันทึกข้อมูล...";
   const imageBase64 = captureImage();
 
@@ -364,18 +363,16 @@ const locationName = document.getElementById("locationSelect").value;
       })
     });
 
-    // ⏱ หน่วงเวลา 1 วินาทีเพื่อให้ Script ฝั่ง Server เคลียร์คิวงานแรก
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // หน่วงเวลาเล็กน้อยระหว่างส่งข้อมูลกับรูป
+    await new Promise(r => setTimeout(r, 500));
 
-    // 🟢 2. บันทึกรูปภาพ (ใช้ URLSearchParams แบบเพียวๆ)
+    // 🟢 2. บันทึกรูปภาพ
     status.innerText = "📸 กำลังบันทึกรูปภาพ...";
-    
     const params = new URLSearchParams();
     params.append("action", "uploadImage");
     params.append("studentId", user.studentId);
     params.append("image", imageBase64);
 
-    // ส่งแบบ no-cors เพื่อให้ผ่านข้อจำกัด Browser ง่ายที่สุด
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
@@ -383,51 +380,38 @@ const locationName = document.getElementById("locationSelect").value;
       body: params.toString()
     });
 
-// 🏁 จบงาน
+    // 🏁 จบงาน
     playSound(type);
     
-    // แสดงป้ายแจ้งเตือนสำเร็จ
-    Swal.fire({
+    // 3. ใช้ await เพื่อหยุดทุกอย่างจนกว่าพนักงานจะกดปุ่ม "ตกลง"
+    await Swal.fire({
       title: 'บันทึกสำเร็จ',
-      text: 'บันทึกข้อมูลและรูปภาพเรียบร้อยแล้ว',
+      text: `คุณ ${user.name} บันทึก ${type} เรียบร้อยแล้ว`,
       icon: 'success',
       confirmButtonText: 'ตกลง',
       confirmButtonColor: '#6366f1',
-      allowOutsideClick: false 
-    }).then((result) => {
-      if (result.isConfirmed) {
-        // ตรรกะการเด้งกลับ
-        if (window.opener) {
-            window.close();
-        } else {
-            window.location.href = "https://pro602.github.io/Scan/?v=1.1"; 
-        }
-      }
+      allowOutsideClick: false
     });
 
-    // 🔥 ส่วนสำคัญที่สุด: ป้องกันการบันทึกซ้ำ
-    // สั่งให้ระบบหยุดรอ 5 วินาที (5000ms) ก่อนจะเปิดให้สแกนคนต่อไปได้
+    // 4. หลังจากกดตกลง ให้หน่วงเวลาอีกนิดก่อนเริ่มรับคนใหม่
+    status.innerText = "เตรียมรับคนถัดไป...";
     setTimeout(() => {
-        isProcessing = false; // ปลดล็อคสถานะ
-        status.innerText = "พร้อมสำหรับการสแกนถัดไป";
-        startScanLoop();      // เริ่มลูปสแกนใหม่อีกครั้ง
-    }, 7000); 
+        isProcessing = false;
+        status.innerText = "พร้อมใช้งาน";
+        startScanLoop(); // เริ่มสแกนใหม่ที่นี่ที่เดียว
+    }, 3000); 
+
+    // ตรรกะการเด้งกลับ (ถ้าต้องการให้ปิดหน้าต่างอัตโนมัติ)
+    if (window.opener) {
+        window.close();
+    } else {
+        // window.location.href = "https://pro602.github.io/Scan/?v=1.1"; 
+    }
 
   } catch (err) {
     console.error(err);
-    // เปลี่ยน alert เป็น Swal เพื่อความสวยงาม
-    Swal.fire({
-      title: 'เกิดข้อผิดพลาด',
-      text: 'ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่อีกครั้ง',
-      icon: 'error',
-      confirmButtonColor: '#ef4444'
-    });
-    
-    // หาก Error ให้รอ 2 วินาทีแล้วเริ่มสแกนใหม่
-    setTimeout(() => {
-        isProcessing = false;
-        startScanLoop();
-    }, 2000);
+    isProcessing = false;
+    startScanLoop();
   }
 }
 // ปรับให้ภาพเล็กลงที่สุดเพื่อความชัวร์ (120x90, คุณภาพ 0.1)
