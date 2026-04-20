@@ -213,19 +213,24 @@ function startScanLoop(){
   if(scanInterval) clearInterval(scanInterval);
 
   scanInterval = setInterval(async () => {
-    // 🛑 ตรวจสอบ Lock: หากกำลังประมวลผลคนแรกอยู่ ให้ข้ามการสแกนทั้งหมด
+    // 🛑 จุดที่ 1: ถ้ากำลังประมวลผลอยู่ ให้หยุดการสแกนทันที
     if (isProcessing) return;
 
-    const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+    const detection = await faceapi
+      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+      .withFaceLandmarks()
+      .withFaceDescriptor();
+
     if (!detection) return;
 
-    // 🔥 ตรวจสอบการหันหน้า (Challenge)
+    // 🔥 การตรวจสอบ Challenge หันหน้า (Logic เดิม)
     const nose = detection.landmarks.getNose();
     const noseX = nose[3].x;
     const faceCenter = detection.detection.box.x + detection.detection.box.width / 2;
 
     if (!challengePassed) {
-      if ((challenge === "LEFT" && noseX < faceCenter - 10) || (challenge === "RIGHT" && noseX > faceCenter + 10)) {
+      if ((challenge === "LEFT" && noseX < faceCenter - 10) || 
+          (challenge === "RIGHT" && noseX > faceCenter + 10)) {
         challengePassed = true;
         status.innerText = "✅ ผ่านการตรวจสอบ";
       }
@@ -233,8 +238,9 @@ function startScanLoop(){
     }
 
     const best = findBestMatch(detection.descriptor);
+
     if (best && best.distance < MATCH_THRESHOLD) {
-      // 🚀 จุดสำคัญ: ล็อคสถานะ "กำลังประมวลผล" และหยุด Loop ทันที
+      // 🚀 จุดที่ 2: ล็อคสถานะและหยุด Loop ทันทีเพื่อป้องกันการบันทึกซ้ำ
       isProcessing = true; 
       clearInterval(scanInterval); 
       confirmAttendance(best);
@@ -286,25 +292,19 @@ function getDistance(lat1, lon1, lat2, lon2){
 }
 
 // ================= CONFIRM =================
-// ================= CONFIRM (ใช้ Logic เดิม 100%) =================
 async function confirmAttendance(user) {
   const type = document.getElementById("typeSelect").value;
   const locationName = document.getElementById("locationSelect").value;
 
   if (!locationName) {
     alert("❌ กรุณาเลือกสถานที่");
-    isProcessing = false;
-    startScanLoop();
-    return;
+    isProcessing = false; startScanLoop(); return;
   }
 
   const gps = await getGPS();
-
   if (!gps.lat) {
     alert("❌ กรุณาเปิด GPS");
-    isProcessing = false;
-    startScanLoop();
-    return;
+    isProcessing = false; startScanLoop(); return;
   }
 
   const locationText = gps.lat + "," + gps.lng;
@@ -314,30 +314,24 @@ async function confirmAttendance(user) {
     const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
     const radius = loc.radius || 300;
 
-    // --- ส่วนเงื่อนไขยกเว้น "ทำงานนอกสถานที่" แบบเดิมของคุณ ---
     if (locationName !== "ทำงานนอกสถานที่" && dist > radius) {
       playSound("ERROR");
       speak("อยู่นอกพื้นที่");
-
-      alert("❌ คุณอยู่ห่างจาก " + locationName + " ประมาณ " + Math.round(dist) + " เมตร (จำกัดที่ " + radius + " เมตร)");
-      isProcessing = false;
-      startScanLoop();
-      return;
+      alert("❌ คุณอยู่ห่างจาก " + locationName + " ประมาณ " + Math.round(dist) + " เมตร");
+      isProcessing = false; startScanLoop(); return;
     }
   }
 
+  // จุดที่ 3: กดยืนยันชื่อพนักงาน
   if (!confirm(`ยืนยัน ${type}\n${user.name}`)) {
-    isProcessing = false; 
-    startScanLoop();
-    return;
+    isProcessing = false; startScanLoop(); return;
   }
 
-  // --- เริ่มขั้นตอนบันทึก (โครงสร้างเดิม) ---
   status.innerText = "⏳ กำลังบันทึกข้อมูล...";
   const imageBase64 = captureImage();
 
   try {
-    // 🔵 1. บันทึกข้อมูลตัวหนังสือ
+    // 🔵 1. ส่งข้อมูลหลัก
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
@@ -353,12 +347,10 @@ async function confirmAttendance(user) {
       })
     });
 
-    // ⏱ หน่วงเวลา 1 วินาทีตามโค้ดเดิม
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // 🟢 2. บันทึกรูปภาพ (ใช้ URLSearchParams แบบเดิม)
+    // 🟢 2. ส่งรูปภาพ
     status.innerText = "📸 กำลังบันทึกรูปภาพ...";
-    
     const params = new URLSearchParams();
     params.append("action", "uploadImage");
     params.append("studentId", user.studentId);
@@ -371,9 +363,9 @@ async function confirmAttendance(user) {
       body: params.toString()
     });
 
-    // 🏁 จบงานและเด้งกลับ Dashboard ตามโค้ดเดิม
     playSound(type);
     
+    // แจ้งเตือนสำเร็จและเด้งกลับ Dashboard
     Swal.fire({
       title: 'บันทึกสำเร็จ',
       text: 'บันทึกข้อมูลและรูปภาพเรียบร้อยแล้ว',
@@ -386,7 +378,6 @@ async function confirmAttendance(user) {
         if (window.opener) {
             window.close();
         } else {
-            // กลับไปยังหน้า Dashboard ตาม URL เดิมของคุณ
             window.location.href = "https://pro602.github.io/Scan/?v=1.1"; 
         }
       }
@@ -395,10 +386,10 @@ async function confirmAttendance(user) {
   } catch (err) {
     console.error(err);
     alert("❌ เกิดข้อผิดพลาดในการบันทึกภาพ");
-    isProcessing = false;
-    startScanLoop();
+    isProcessing = false; startScanLoop();
   }
 }
+  
 // ปรับให้ภาพเล็กลงที่สุดเพื่อความชัวร์ (120x90, คุณภาพ 0.1)
 function captureImage() {
   const canvas = document.createElement("canvas");
