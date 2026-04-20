@@ -293,44 +293,40 @@ function getDistance(lat1, lon1, lat2, lon2){
 
 // ================= CONFIRM =================
 async function confirmAttendance(user) {
+  // 1. ล็อคสถานะทันทีป้องกันการบันทึกซ้ำซ้อน
+  if (isProcessing) return;
+  isProcessing = true;
+
+  // 2. หยุดลูปสแกนทันทีเพื่อไม่ให้ AI จับใบหน้าถัดไปมาปน
+  if (scanInterval) clearInterval(scanInterval);
+
   const type = document.getElementById("typeSelect").value;
   const locationName = document.getElementById("locationSelect").value;
 
-  // ตรวจสอบสถานที่
   if (!locationName) {
     Swal.fire('แจ้งเตือน', 'กรุณาเลือกสถานที่', 'warning');
-    isProcessing = false; 
-    startScanLoop(); 
-    return;
+    isProcessing = false; startScanLoop(); return;
   }
 
-  // ตรวจสอบ GPS
   const gps = await getGPS();
   if (!gps.lat) {
     Swal.fire('GPS Error', 'กรุณาเปิด GPS', 'error');
-    isProcessing = false; 
-    startScanLoop(); 
-    return;
+    isProcessing = false; startScanLoop(); return;
   }
 
   const locationText = gps.lat + "," + gps.lng;
   const loc = locationsData.find(l => l.name === locationName);
-
-  // ตรวจสอบระยะทาง (ยกเว้นทำงานนอกสถานที่)
   if (loc && locationName !== "ทำงานนอกสถานที่") {
     const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
     const radius = loc.radius || 300;
     if (dist > radius) {
-      playSound("ERROR");
-      speak("อยู่นอกพื้นที่");
-      Swal.fire('นอกพื้นที่', `คุณอยู่ห่างจากจุดเช็คอิน ${Math.round(dist)} เมตร`, 'error');
-      isProcessing = false; 
-      startScanLoop(); 
-      return;
+      playSound("ERROR"); speak("อยู่นอกพื้นที่");
+      Swal.fire('นอกพื้นที่', `ห่างจากจุดเช็คอิน ${Math.round(dist)} เมตร`, 'error');
+      isProcessing = false; startScanLoop(); return;
     }
   }
 
-  // ยืนยันพนักงานด้วย SweetAlert (ป้องกันการรันคำสั่งซ้อน)
+  // 3. ยืนยันพนักงานด้วย Swal (ช่วยหน่วงเวลาให้คนเดินออกจากหน้ากล้อง)
   const resultConfirm = await Swal.fire({
     title: `ยืนยัน${type}`,
     text: `คุณคือ ${user.name} ใช่หรือไม่?`,
@@ -342,16 +338,14 @@ async function confirmAttendance(user) {
   });
 
   if (!resultConfirm.isConfirmed) {
-    isProcessing = false; 
-    startScanLoop(); 
-    return;
+    isProcessing = false; startScanLoop(); return;
   }
 
   status.innerText = "⏳ กำลังบันทึกข้อมูล...";
   const imageBase64 = captureImage();
 
   try {
-    // 🔵 1. บันทึกข้อมูลตัวหนังสือ
+    // 🔵 ขั้นตอนที่ 1: บันทึกข้อมูลตัวหนังสือ
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
@@ -367,10 +361,10 @@ async function confirmAttendance(user) {
       })
     });
 
-    // หน่วงเวลาเล็กน้อยเพื่อให้แถวข้อมูลใน Sheets ถูกสร้างเสร็จ
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // ⏱ หน่วงเวลา 1.5 วินาทีเพื่อให้ Server ฝั่ง GAS บันทึก Row ข้อมูลเสร็จสมบูรณ์
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
-    // 🟢 2. บันทึกรูปภาพ
+    // 🟢 ขั้นตอนที่ 2: บันทึกรูปภาพ (Link จะถูกใส่ใน Row ล่าสุดของ ID นี้)
     status.innerText = "📸 กำลังบันทึกรูปภาพ...";
     const params = new URLSearchParams();
     params.append("action", "uploadImage");
@@ -383,9 +377,8 @@ async function confirmAttendance(user) {
       body: params.toString()
     });
 
+    // 🏁 บันทึกสำเร็จและเด้งกลับหน้า Dashboard อัตโนมัติ
     playSound(type);
-    
-    // 🏁 จบงาน: แจ้งเตือนสำเร็จและ Auto Redirect
     Swal.fire({
       title: 'บันทึกสำเร็จ',
       text: 'ระบบบันทึกข้อมูลและรูปภาพเรียบร้อยแล้ว',
@@ -395,21 +388,19 @@ async function confirmAttendance(user) {
       allowOutsideClick: false
     }).then((result) => {
       if (result.isConfirmed) {
-        // --- ตรรกะการเด้งกลับ ---
         if (window.opener) {
-            window.close(); // ปิดหน้าต่างถ้าถูกเปิดเป็น Pop-up
+          window.close();
         } else {
-            // เด้งกลับหน้า Dashboard อัตโนมัติ
-            window.location.href = "https://pro602.github.io/Scan/?v=1.1"; 
+          // เด้งกลับไปยัง URL Dashboard เดิม
+          window.location.href = "https://pro602.github.io/Scan/?v=1.1"; 
         }
       }
     });
 
   } catch (err) {
     console.error(err);
-    Swal.fire('ผิดพลาด', 'ไม่สามารถบันทึกข้อมูลได้', 'error');
-    isProcessing = false;
-    startScanLoop();
+    Swal.fire('ผิดพลาด', 'ไม่สามารถบันทึกได้', 'error');
+    isProcessing = false; startScanLoop();
   }
 }
 // ปรับให้ภาพเล็กลงที่สุดเพื่อความชัวร์ (120x90, คุณภาพ 0.1)
