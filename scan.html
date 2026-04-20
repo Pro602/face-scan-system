@@ -98,7 +98,8 @@ let challenge = ""
 let challengePassed = false
 let isDetecting = false   // 🔥 ตัวนี้สำคัญ
 let faceCaptured = false
-
+let isLocked = false
+let alreadySent = false   // 🔥 ตัวนี้สำคัญสุด
 const MATCH_THRESHOLD = 0.45
 
 // ================= AUDIO =================
@@ -212,41 +213,75 @@ function startCamera(){
 
 // ================= SCAN =================
 function startScanLoop(){
-  if(scanInterval) clearInterval(scanInterval);
 
-  scanInterval = setInterval(async () => {
-    if (isProcessing) return; // 🛑 ล็อคป้องกันการสแกนซ้อน
+  if(scanInterval) clearInterval(scanInterval)
 
-    const detection = await faceapi
-      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-      .withFaceLandmarks()
-      .withFaceDescriptor();
+  scanInterval = setInterval(async()=>{
 
-    if (!detection) return;
+    // 🔒 กันทุกกรณี
+    if(isProcessing || faceCaptured || isLocked || alreadySent) return
 
-    // 🔥 การตรวจสอบ Challenge เดิมของคุณ
-    const nose = detection.landmarks.getNose();
-    const noseX = nose[3].x;
-    const faceCenter = detection.detection.box.x + detection.detection.box.width / 2;
+    isLocked = true
 
-    if (!challengePassed) {
-      if ((challenge === "LEFT" && noseX < faceCenter - 10) || 
-          (challenge === "RIGHT" && noseX > faceCenter + 10)) {
-        challengePassed = true;
-        status.innerText = "✅ ผ่านการตรวจสอบ";
+    try{
+
+      const detection = await faceapi
+        .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor()
+
+      if(!detection){
+        isLocked = false
+        return
       }
-      return;
+
+      // ===== ตรวจหันหน้า =====
+      const nose = detection.landmarks.getNose()
+      const noseX = nose[3].x
+      const faceCenter = detection.detection.box.x + detection.detection.box.width/2
+
+      if(!challengePassed){
+
+        if(challenge==="LEFT" && noseX < faceCenter - 15){
+          challengePassed = true
+          status.innerText="✅ ผ่านการตรวจสอบ"
+        }
+
+        if(challenge==="RIGHT" && noseX > faceCenter + 15){
+          challengePassed = true
+          status.innerText="✅ ผ่านการตรวจสอบ"
+        }
+
+        isLocked = false
+        return
+      }
+
+      const best = findBestMatch(detection.descriptor)
+
+      if(best && best.distance < MATCH_THRESHOLD){
+
+        // 🔥 LOCK HARDCORE
+        alreadySent = true
+        faceCaptured = true
+        isProcessing = true
+
+        clearInterval(scanInterval)
+
+        // 🔥 หน่วงให้ภาพนิ่ง
+        setTimeout(async ()=>{
+          await confirmAttendance(best)
+        }, 300)
+
+        return
+      }
+
+    }catch(err){
+      console.error(err)
     }
 
-    const best = findBestMatch(detection.descriptor);
+    isLocked = false
 
-    if (best && best.distance < MATCH_THRESHOLD) {
-      // 🚀 หยุด Loop ทันทีที่เจอหน้า เพื่อไม่ให้หน้าต่างยืนยันเด้งซ้ำ
-      isProcessing = true; 
-      clearInterval(scanInterval); 
-      confirmAttendance(best);
-    }
-  }, 500);
+  },400)
 }
   
 // ================= MATCH =================
@@ -299,37 +334,95 @@ async function confirmAttendance(user) {
   const type = document.getElementById("typeSelect").value;
   const locationName = document.getElementById("locationSelect").value;
 
+  // ===============================
+  // ❌ ไม่เลือกสถานที่
+  // ===============================
   if (!locationName) {
     alert("❌ กรุณาเลือกสถานที่");
+
     isProcessing = false;
+    isLocked = false;
+    faceCaptured = false;
+    alreadySent = false;
+
     startScanLoop();
     return;
   }
 
+  // ===============================
+  // 📍 GPS
+  // ===============================
   const gps = await getGPS();
 
   if (!gps.lat) {
     alert("❌ กรุณาเปิด GPS");
+
     isProcessing = false;
+    isLocked = false;
+    faceCaptured = false;
+    alreadySent = false;
+
     startScanLoop();
     return;
   }
 
-  // ✅ 🔥 ถ่ายรูปตรงนี้ (ตอนกล้องยังเปิดอยู่)
-  const imageBase64 = captureImage();
+  const locationText = gps.lat + "," + gps.lng;
+  const loc = locationsData.find(l => l.name === locationName);
 
-  // ✅ 🔥 แล้วค่อยปิดกล้อง
-  if(video.srcObject){
-    video.srcObject.getTracks().forEach(t => t.stop())
+  // ===============================
+  // 📏 ตรวจระยะ (เหมือนเดิม 100%)
+  // ===============================
+  if (loc) {
+    const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
+    const radius = loc.radius || 300;
+
+    if (locationName !== "ทำงานนอกสถานที่" && dist > radius) {
+      playSound("ERROR");
+      speak("อยู่นอกพื้นที่");
+
+      alert("❌ คุณอยู่ห่างจาก " + locationName + " ประมาณ " + Math.round(dist) + " เมตร (จำกัดที่ " + radius + " เมตร)");
+
+      isProcessing = false;
+      isLocked = false;
+      faceCaptured = false;
+      alreadySent = false;
+
+      startScanLoop();
+      return;
+    }
   }
 
-  const locationText = gps.lat + "," + gps.lng;
+  // ===============================
+  // ❗ confirm
+  // ===============================
+  if (!confirm(`ยืนยัน ${type}\n${user.name}`)) {
+
+    isProcessing = false;
+    isLocked = false;
+    faceCaptured = false;
+    alreadySent = false;
+
+    startScanLoop();
+    return;
+  }
+
+  // ===============================
+  // 📸 ถ่ายรูปก่อนปิดกล้อง
+  // ===============================
+  const imageBase64 = captureImage();
+
+  // ปิดกล้องหลัง capture (กันภาพดำ)
+  if (video.srcObject) {
+    video.srcObject.getTracks().forEach(t => t.stop());
+  }
 
   status.innerText = "⏳ กำลังบันทึกข้อมูล...";
 
   try {
 
-    // 🔵 บันทึกข้อมูล
+    // ===============================
+    // 🔵 1. บันทึกข้อมูล
+    // ===============================
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
@@ -345,9 +438,14 @@ async function confirmAttendance(user) {
       })
     });
 
-    await new Promise(r => setTimeout(r, 1000));
+    // ⏱ กันยิงซ้ำ
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // 🟢 บันทึกรูป
+    // ===============================
+    // 🟢 2. บันทึกรูป
+    // ===============================
+    status.innerText = "📸 กำลังบันทึกรูปภาพ...";
+
     const params = new URLSearchParams();
     params.append("action", "uploadImage");
     params.append("studentId", user.studentId);
@@ -360,20 +458,49 @@ async function confirmAttendance(user) {
       body: params.toString()
     });
 
-    // SUCCESS
+    // ===============================
+    // ✅ SUCCESS
+    // ===============================
+    playSound(type);
+
     await Swal.fire({
       title: 'บันทึกสำเร็จ',
+      text: 'บันทึกข้อมูลและรูปภาพเรียบร้อยแล้ว',
       icon: 'success',
-      confirmButtonColor: '#6366f1'
+      confirmButtonText: 'ตกลง',
+      confirmButtonColor: '#6366f1',
+      allowOutsideClick: false
     });
 
-    // redirect
-    window.location.href = "https://pro602.github.io/Scan/?v=1.1";
+    // ===============================
+    // 🔓 RESET LOCK (สำคัญสุด)
+    // ===============================
+    isProcessing = false;
+    isLocked = false;
+    faceCaptured = false;
+    alreadySent = false;
+
+    // ===============================
+    // 🔁 REDIRECT
+    // ===============================
+    if (window.opener) {
+      window.close();
+    } else {
+      window.location.href = "https://pro602.github.io/Scan/?v=1.1";
+    }
 
   } catch (err) {
     console.error(err);
-    alert("❌ error");
+    alert("❌ เกิดข้อผิดพลาดในการบันทึกภาพ");
+
+    // ===============================
+    // 🔓 RESET ตอน ERROR
+    // ===============================
     isProcessing = false;
+    isLocked = false;
+    faceCaptured = false;
+    alreadySent = false;
+
     startScanLoop();
   }
 }
