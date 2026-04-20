@@ -286,57 +286,64 @@ function getDistance(lat1, lon1, lat2, lon2){
 }
 
 // ================= CONFIRM =================
+// ================= CONFIRM (ใช้ Logic เดิม 100%) =================
 async function confirmAttendance(user) {
-  // 1. ล็อคป้องกันการรันซ้ำ
-  if (isProcessing) return;
-  isProcessing = true;
-  if (scanInterval) clearInterval(scanInterval);
-
   const type = document.getElementById("typeSelect").value;
   const locationName = document.getElementById("locationSelect").value;
 
-  // ตรวจสอบเงื่อนไขพื้นฐาน (สถานที่/GPS)
   if (!locationName) {
-    Swal.fire('แจ้งเตือน', 'กรุณาเลือกสถานที่', 'warning');
-    isProcessing = false; startScanLoop(); return;
+    alert("❌ กรุณาเลือกสถานที่");
+    isProcessing = false;
+    startScanLoop();
+    return;
   }
+
   const gps = await getGPS();
+
   if (!gps.lat) {
-    Swal.fire('GPS Error', 'กรุณาเปิด GPS', 'error');
-    isProcessing = false; startScanLoop(); return;
+    alert("❌ กรุณาเปิด GPS");
+    isProcessing = false;
+    startScanLoop();
+    return;
   }
 
-  // สร้าง Unique ID เพื่อใช้จับคู่ข้อมูลกับรูปภาพให้ถูกแถว
-  const recordId = "REC-" + Date.now(); 
   const locationText = gps.lat + "," + gps.lng;
+  const loc = locationsData.find(l => l.name === locationName);
 
-  // 2. ยืนยันตัวตนก่อนบันทึก
-  const resultConfirm = await Swal.fire({
-    title: `ยืนยัน${type}`,
-    text: `คุณคือ ${user.name} ใช่หรือไม่?`,
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonText: 'บันทึกข้อมูล',
-    cancelButtonText: 'ยกเลิก',
-    allowOutsideClick: false
-  });
+  if (loc) {
+    const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
+    const radius = loc.radius || 300;
 
-  if (!resultConfirm.isConfirmed) {
-    isProcessing = false; startScanLoop(); return;
+    // --- ส่วนเงื่อนไขยกเว้น "ทำงานนอกสถานที่" แบบเดิมของคุณ ---
+    if (locationName !== "ทำงานนอกสถานที่" && dist > radius) {
+      playSound("ERROR");
+      speak("อยู่นอกพื้นที่");
+
+      alert("❌ คุณอยู่ห่างจาก " + locationName + " ประมาณ " + Math.round(dist) + " เมตร (จำกัดที่ " + radius + " เมตร)");
+      isProcessing = false;
+      startScanLoop();
+      return;
+    }
   }
 
-  status.innerText = "⏳ กำลังบันทึกข้อมูลและรูปภาพ...";
+  if (!confirm(`ยืนยัน ${type}\n${user.name}`)) {
+    isProcessing = false; 
+    startScanLoop();
+    return;
+  }
+
+  // --- เริ่มขั้นตอนบันทึก (โครงสร้างเดิม) ---
+  status.innerText = "⏳ กำลังบันทึกข้อมูล...";
   const imageBase64 = captureImage();
 
   try {
-    // 🔵 ขั้นตอนที่ 1: ส่งข้อมูลหลักพร้อม recordId
+    // 🔵 1. บันทึกข้อมูลตัวหนังสือ
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "attendance",
-        recordId: recordId, // ส่ง ID ไปด้วยเพื่อใช้อ้างอิง
         studentId: user.studentId,
         name: user.name,
         department: user.class,
@@ -346,45 +353,50 @@ async function confirmAttendance(user) {
       })
     });
 
-    // หน่วงเวลา 2 วินาที เพื่อให้ฝั่ง Server มั่นใจว่าบันทึก Row ข้อมูลเสร็จแล้ว
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // ⏱ หน่วงเวลา 1 วินาทีตามโค้ดเดิม
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // 🟢 ขั้นตอนที่ 2: ส่งรูปภาพพร้อม recordId เดียวกัน
-    status.innerText = "📸 กำลังอัปโหลดรูปภาพ...";
+    // 🟢 2. บันทึกรูปภาพ (ใช้ URLSearchParams แบบเดิม)
+    status.innerText = "📸 กำลังบันทึกรูปภาพ...";
+    
     const params = new URLSearchParams();
     params.append("action", "uploadImage");
-    params.append("recordId", recordId); // ใช้ ID เดียวกันเพื่อให้ GAS หาแถวเจอ
     params.append("studentId", user.studentId);
     params.append("image", imageBase64);
 
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: params.toString()
     });
 
-    // 🏁 จบงานและเด้งกลับ Dashboard
+    // 🏁 จบงานและเด้งกลับ Dashboard ตามโค้ดเดิม
     playSound(type);
-    await Swal.fire({
+    
+    Swal.fire({
       title: 'บันทึกสำเร็จ',
-      text: 'ข้อมูลและรูปภาพถูกบันทึกเรียบร้อยแล้ว',
+      text: 'บันทึกข้อมูลและรูปภาพเรียบร้อยแล้ว',
       icon: 'success',
-      confirmButtonText: 'กลับหน้าหลัก',
+      confirmButtonText: 'ตกลง',
       confirmButtonColor: '#6366f1',
       allowOutsideClick: false
+    }).then((result) => {
+      if (result.isConfirmed) {
+        if (window.opener) {
+            window.close();
+        } else {
+            // กลับไปยังหน้า Dashboard ตาม URL เดิมของคุณ
+            window.location.href = "https://pro602.github.io/Scan/?v=1.1"; 
+        }
+      }
     });
-
-    // การเด้งกลับ Dashboard
-    if (window.opener) {
-      window.close();
-    } else {
-      window.location.href = "https://pro602.github.io/Scan/?v=1.1"; 
-    }
 
   } catch (err) {
     console.error(err);
-    Swal.fire('ผิดพลาด', 'การเชื่อมต่อขัดข้อง กรุณาลองใหม่', 'error');
-    isProcessing = false; startScanLoop();
+    alert("❌ เกิดข้อผิดพลาดในการบันทึกภาพ");
+    isProcessing = false;
+    startScanLoop();
   }
 }
 // ปรับให้ภาพเล็กลงที่สุดเพื่อความชัวร์ (120x90, คุณภาพ 0.1)
