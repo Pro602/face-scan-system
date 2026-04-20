@@ -210,46 +210,32 @@ function startCamera(){
 
 // ================= SCAN =================
 function startScanLoop(){
-  if(scanInterval) clearInterval(scanInterval)
+  if(scanInterval) clearInterval(scanInterval);
 
-  scanInterval=setInterval(async()=>{
-    if(isProcessing) return
+  scanInterval = setInterval(async() => {
+    // 1. ถ้าเครื่องกำลังยุ่งกับการบันทึก ให้หยุดทำงานทันที ไม่ต้องสแกนต่อ
+    if(isProcessing) return; 
 
     const detection = await faceapi
-      .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
+      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
       .withFaceLandmarks()
-      .withFaceDescriptor()
+      .withFaceDescriptor();
 
-    if(!detection) return
+    if(!detection) return;
 
-    // 🔥 ตรวจหันหน้า (กันรูป)
-    const nose = detection.landmarks.getNose()
-    const noseX = nose[3].x
-    const faceCenter = detection.detection.box.x + detection.detection.box.width/2
+    // ... (ส่วนตรวจ Challenge หันซ้าย/ขวา ของคุณ) ...
 
-    if(!challengePassed){
-      if(challenge==="LEFT" && noseX < faceCenter - 10){
-        challengePassed = true
-        status.innerText="✅ ผ่านการตรวจสอบ (กรุณานิ่งสักครู่)"
-      }
-      if(challenge==="RIGHT" && noseX > faceCenter + 10){
-        challengePassed = true
-        status.innerText="✅ ผ่านการตรวจสอบ (กรุณานิ่งสักครู่)"
-      }
-      return
-    }
-
-    // ถ้าผ่าน Challenge แล้ว ให้หาใบหน้าที่ตรงที่สุด
-    const best = findBestMatch(detection.descriptor)
+    const best = findBestMatch(detection.descriptor);
 
     if(best && best.distance < MATCH_THRESHOLD){
-      // 🛑 หยุดการสแกนทันทีเพื่อไม่ให้ตรวจจับซ้อน
-      isProcessing = true
-      clearInterval(scanInterval) 
-      confirmAttendance(best)
+      // 2. ล็อคตายทันที! ป้องกัน AI ตรวจเจอซ้ำระหว่างรอหน้าจอ confirm
+      isProcessing = true; 
+      clearInterval(scanInterval); 
+      
+      // เรียกฟังก์ชันบันทึก
+      confirmAttendance(best);
     }
-
-  }, 500)
+  }, 500);
 }
 
 // ================= MATCH =================
