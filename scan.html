@@ -215,10 +215,10 @@ function startScanLoop(){
 
   scanInterval = setInterval(async () => {
 
-    // 🔒 LOCK 2 ชั้น
-    if(isProcessing || isLocked) return
+    // 🔒 LOCK ทุกกรณี
+    if(isProcessing || isLocked || faceCaptured) return
 
-    isLocked = true  // 🔥 ล็อกทันทีตั้งแต่เริ่มรอบ
+    isLocked = true
 
     try {
 
@@ -232,7 +232,7 @@ function startScanLoop(){
         return
       }
 
-      // ===== ตรวจหันหน้า =====
+      // ===== Anti-spoof =====
       const nose = detection.landmarks.getNose()
       const noseX = nose[3].x
       const faceCenter = detection.detection.box.x + detection.detection.box.width/2
@@ -257,9 +257,16 @@ function startScanLoop(){
 
       if(best && best.distance < MATCH_THRESHOLD){
 
-        // 🔥 ล็อกจริง
+        // 🔥 หยุดทุกอย่างทันที
+        faceCaptured = true
         isProcessing = true
+
         clearInterval(scanInterval)
+
+        // 🔥 หยุดกล้องทันที (กันเฟรมใหม่)
+        if(video.srcObject){
+          video.srcObject.getTracks().forEach(t => t.stop())
+        }
 
         await confirmAttendance(best)
         return
@@ -271,9 +278,8 @@ function startScanLoop(){
 
     isLocked = false
 
-  }, 500)
+  }, 400) // ลด delay ให้เร็วขึ้นนิด
 }
-
 // ================= MATCH =================
 function findBestMatch(query){
   let best=null
@@ -329,8 +335,11 @@ async function confirmAttendance(user) {
 
   if (!locationName) {
     alert("❌ กรุณาเลือกสถานที่");
+
     isProcessing = false;
     isLocked = false;
+    faceCaptured = false;
+
     startScanLoop();
     return;
   }
@@ -339,8 +348,11 @@ async function confirmAttendance(user) {
 
   if (!gps.lat) {
     alert("❌ กรุณาเปิด GPS");
+
     isProcessing = false;
     isLocked = false;
+    faceCaptured = false;
+
     startScanLoop();
     return;
   }
@@ -352,15 +364,16 @@ async function confirmAttendance(user) {
     const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
     const radius = loc.radius || 300;
 
-    // ✅ ยกเว้น "ทำงานนอกสถานที่"
     if (locationName !== "ทำงานนอกสถานที่" && dist > radius) {
       playSound("ERROR");
       speak("อยู่นอกพื้นที่");
 
       alert("❌ คุณอยู่ห่างจาก " + locationName + " ประมาณ " + Math.round(dist) + " เมตร (จำกัดที่ " + radius + " เมตร)");
-      
+
       isProcessing = false;
       isLocked = false;
+      faceCaptured = false;
+
       startScanLoop();
       return;
     }
@@ -369,6 +382,8 @@ async function confirmAttendance(user) {
   if (!confirm(`ยืนยัน ${type}\n${user.name}`)) {
     isProcessing = false;
     isLocked = false;
+    faceCaptured = false;
+
     startScanLoop();
     return;
   }
@@ -394,7 +409,6 @@ async function confirmAttendance(user) {
       })
     });
 
-    // ⏱ หน่วงกันยิงซ้ำ (สำคัญ)
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // 🟢 2. บันทึกรูป
@@ -424,11 +438,11 @@ async function confirmAttendance(user) {
       allowOutsideClick: false
     });
 
-    // 🔒 ปลด lock ก่อนออก
+    // 🔓 ปลด lock ครบทุกตัว (สำคัญมาก)
     isProcessing = false;
     isLocked = false;
+    faceCaptured = false;
 
-    // 🔁 redirect
     if (window.opener) {
       window.close();
     } else {
@@ -439,9 +453,10 @@ async function confirmAttendance(user) {
     console.error(err);
     alert("❌ เกิดข้อผิดพลาดในการบันทึกภาพ");
 
-    // 🔓 reset lock เมื่อ error
     isProcessing = false;
     isLocked = false;
+    faceCaptured = false;
+
     startScanLoop();
   }
 }
