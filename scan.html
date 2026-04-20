@@ -213,24 +213,19 @@ function startScanLoop(){
   if(scanInterval) clearInterval(scanInterval);
 
   scanInterval = setInterval(async () => {
-    // 🛑 ถ้ากำลังประมวลผล (isProcessing เป็น true) ให้หยุดสแกนทันที
+    // 🛑 ตรวจสอบ Lock: หากกำลังประมวลผลคนแรกอยู่ ให้ข้ามการสแกนทั้งหมด
     if (isProcessing) return;
 
-    const detection = await faceapi
-      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-      .withFaceLandmarks()
-      .withFaceDescriptor();
-
+    const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
     if (!detection) return;
 
-    // 🔥 ตรวจสอบ Challenge หันหน้า
+    // 🔥 ตรวจสอบการหันหน้า (Challenge)
     const nose = detection.landmarks.getNose();
     const noseX = nose[3].x;
     const faceCenter = detection.detection.box.x + detection.detection.box.width / 2;
 
     if (!challengePassed) {
-      if ((challenge === "LEFT" && noseX < faceCenter - 10) || 
-          (challenge === "RIGHT" && noseX > faceCenter + 10)) {
+      if ((challenge === "LEFT" && noseX < faceCenter - 10) || (challenge === "RIGHT" && noseX > faceCenter + 10)) {
         challengePassed = true;
         status.innerText = "✅ ผ่านการตรวจสอบ";
       }
@@ -238,9 +233,8 @@ function startScanLoop(){
     }
 
     const best = findBestMatch(detection.descriptor);
-
     if (best && best.distance < MATCH_THRESHOLD) {
-      // 🚀 จุดสำคัญ: ล็อคสถานะและหยุด Loop ทันที
+      // 🚀 จุดสำคัญ: ล็อคสถานะ "กำลังประมวลผล" และหยุด Loop ทันที
       isProcessing = true; 
       clearInterval(scanInterval); 
       confirmAttendance(best);
@@ -293,16 +287,10 @@ function getDistance(lat1, lon1, lat2, lon2){
 
 // ================= CONFIRM =================
 async function confirmAttendance(user) {
-  // 1. ล็อคสถานะทันทีป้องกันการบันทึกซ้ำซ้อน
-  if (isProcessing) return;
-  isProcessing = true;
-
-  // 2. หยุดลูปสแกนทันทีเพื่อไม่ให้ AI จับใบหน้าถัดไปมาปน
-  if (scanInterval) clearInterval(scanInterval);
-
   const type = document.getElementById("typeSelect").value;
   const locationName = document.getElementById("locationSelect").value;
 
+  // ตรวจสอบเงื่อนไขพื้นฐาน
   if (!locationName) {
     Swal.fire('แจ้งเตือน', 'กรุณาเลือกสถานที่', 'warning');
     isProcessing = false; startScanLoop(); return;
@@ -326,7 +314,7 @@ async function confirmAttendance(user) {
     }
   }
 
-  // 3. ยืนยันพนักงานด้วย Swal (ช่วยหน่วงเวลาให้คนเดินออกจากหน้ากล้อง)
+  // ใช้ SweetAlert ยืนยันพนักงาน (เพื่อหยุดรอการยืนยันจากคนจริงๆ)
   const resultConfirm = await Swal.fire({
     title: `ยืนยัน${type}`,
     text: `คุณคือ ${user.name} ใช่หรือไม่?`,
@@ -345,7 +333,7 @@ async function confirmAttendance(user) {
   const imageBase64 = captureImage();
 
   try {
-    // 🔵 ขั้นตอนที่ 1: บันทึกข้อมูลตัวหนังสือ
+    // 🔵 ขั้นตอนที่ 1: บันทึกข้อมูลหลัก
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
@@ -361,10 +349,10 @@ async function confirmAttendance(user) {
       })
     });
 
-    // ⏱ หน่วงเวลา 1.5 วินาทีเพื่อให้ Server ฝั่ง GAS บันทึก Row ข้อมูลเสร็จสมบูรณ์
+    // ⏱ หน่วงเวลา 1.5 วินาที เพื่อให้มั่นใจว่า Row ข้อมูลถูกสร้างใน Sheets แล้ว
     await new Promise(resolve => setTimeout(resolve, 1500));
 
-    // 🟢 ขั้นตอนที่ 2: บันทึกรูปภาพ (Link จะถูกใส่ใน Row ล่าสุดของ ID นี้)
+    // 🟢 ขั้นตอนที่ 2: บันทึกรูปภาพ (รูปจะถูกแนบใน Row ล่าสุด)
     status.innerText = "📸 กำลังบันทึกรูปภาพ...";
     const params = new URLSearchParams();
     params.append("action", "uploadImage");
@@ -377,7 +365,7 @@ async function confirmAttendance(user) {
       body: params.toString()
     });
 
-    // 🏁 บันทึกสำเร็จและเด้งกลับหน้า Dashboard อัตโนมัติ
+    // 🏁 แจ้งเตือนสำเร็จและเด้งกลับหน้า Dashboard
     playSound(type);
     Swal.fire({
       title: 'บันทึกสำเร็จ',
@@ -391,7 +379,7 @@ async function confirmAttendance(user) {
         if (window.opener) {
           window.close();
         } else {
-          // เด้งกลับไปยัง URL Dashboard เดิม
+          // เด้งกลับไปยังหน้า Dashboard อัตโนมัติ
           window.location.href = "https://pro602.github.io/Scan/?v=1.1"; 
         }
       }
