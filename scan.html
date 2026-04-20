@@ -386,32 +386,48 @@ const locationName = document.getElementById("locationSelect").value;
 // 🏁 จบงาน
     playSound(type);
     
+    // แสดงป้ายแจ้งเตือนสำเร็จ
     Swal.fire({
       title: 'บันทึกสำเร็จ',
       text: 'บันทึกข้อมูลและรูปภาพเรียบร้อยแล้ว',
       icon: 'success',
       confirmButtonText: 'ตกลง',
-      confirmButtonColor: '#6366f1', // สีเดียวกับปุ่มเริ่มสแกนของคุณ
-      allowOutsideClick: false // กันคนกดที่อื่นเพื่อปิด
+      confirmButtonColor: '#6366f1',
+      allowOutsideClick: false 
     }).then((result) => {
       if (result.isConfirmed) {
-        // --- ตรรกะการเด้งกลับ ---
-        // 1. ถ้าหน้าจอนี้ถูกเปิดเป็นหน้าต่างใหม่ (target="_blank") ให้ปิดหน้าต่างนี้
+        // ตรรกะการเด้งกลับ
         if (window.opener) {
             window.close();
         } else {
-            // 2. ถ้าไม่ได้เปิดหน้าต่างใหม่ ให้ส่งกลับไปที่หน้า Dashboard เดิม
-            // เปลี่ยน URL ด้านล่างนี้เป็น URL หน้า Dashboard ของคุณ
             window.location.href = "https://pro602.github.io/Scan/?v=1.1"; 
         }
       }
     });
 
+    // 🔥 ส่วนสำคัญที่สุด: ป้องกันการบันทึกซ้ำ
+    // สั่งให้ระบบหยุดรอ 5 วินาที (5000ms) ก่อนจะเปิดให้สแกนคนต่อไปได้
+    setTimeout(() => {
+        isProcessing = false; // ปลดล็อคสถานะ
+        status.innerText = "พร้อมสำหรับการสแกนถัดไป";
+        startScanLoop();      // เริ่มลูปสแกนใหม่อีกครั้ง
+    }, 7000); 
+
   } catch (err) {
     console.error(err);
-    alert("❌ เกิดข้อผิดพลาดในการบันทึกภาพ");
-    isProcessing = false;
-    startScanLoop();
+    // เปลี่ยน alert เป็น Swal เพื่อความสวยงาม
+    Swal.fire({
+      title: 'เกิดข้อผิดพลาด',
+      text: 'ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่อีกครั้ง',
+      icon: 'error',
+      confirmButtonColor: '#ef4444'
+    });
+    
+    // หาก Error ให้รอ 2 วินาทีแล้วเริ่มสแกนใหม่
+    setTimeout(() => {
+        isProcessing = false;
+        startScanLoop();
+    }, 2000);
   }
 }
 // ปรับให้ภาพเล็กลงที่สุดเพื่อความชัวร์ (120x90, คุณภาพ 0.1)
