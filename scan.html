@@ -224,17 +224,27 @@ function startScanLoop(){
 
     try{
 
-      status.innerText = "📸 กำลังสแกน..."
+status.innerText = "📸 กำลังสแกน..."
 
-      const descriptor = await captureSmartLiveness()
+let descriptor = await captureSmartLiveness()
 
-      // ❌ ไม่ผ่าน liveness
-      if(!descriptor){
-        isLocked = false
-        return
-      }
+if(!descriptor){
+  console.log("fallback normal scan")
 
-      const best = findBestMatch(descriptor)
+  const det = await faceapi
+    .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
+    .withFaceLandmarks()
+    .withFaceDescriptor()
+
+  if(!det){
+    isLocked = false
+    return
+  }
+
+  descriptor = det.descriptor
+}
+
+const best = findBestMatch(descriptor)
 
       if(best && best.distance < MATCH_THRESHOLD){
 
@@ -264,7 +274,7 @@ function startScanLoop(){
 
     isLocked = false
 
-  },300) // 🔥 เร็วขึ้น
+  },450) // 🔥 เร็วขึ้น
 }
   
 // ================= MATCH =================
@@ -505,13 +515,18 @@ function captureImage() {
 async function captureSmartLiveness(){
 
   const samples = []
-  let prevBox = null
+  let blinkDetected = false
+  let prevEAR = null
   let movement = 0
+  let prevBox = null
 
-  for(let i=0;i<2;i++){
+  for(let i=0;i<3;i++){
 
     const det = await faceapi
-      .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
+      .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions({
+        inputSize: 224,
+        scoreThreshold: 0.5
+      }))
       .withFaceLandmarks()
       .withFaceDescriptor()
 
@@ -519,6 +534,30 @@ async function captureSmartLiveness(){
 
       samples.push(det.descriptor)
 
+      // =============================
+      // 👁️ BLINK DETECTION (EAR)
+      // =============================
+      const leftEye = det.landmarks.getLeftEye()
+      const rightEye = det.landmarks.getRightEye()
+
+      function getEAR(eye){
+        const dist = (a,b)=>Math.hypot(a.x-b.x,a.y-b.y)
+        return (dist(eye[1],eye[5]) + dist(eye[2],eye[4])) / (2 * dist(eye[0],eye[3]))
+      }
+
+      const ear = (getEAR(leftEye) + getEAR(rightEye)) / 2
+
+      if(prevEAR !== null){
+        if(prevEAR > 0.25 && ear < 0.20){
+          blinkDetected = true
+        }
+      }
+
+      prevEAR = ear
+
+      // =============================
+      // 📦 MOVEMENT
+      // =============================
       const box = det.detection.box
 
       if(prevBox){
@@ -530,26 +569,33 @@ async function captureSmartLiveness(){
       prevBox = box
     }
 
-    await new Promise(r => setTimeout(r,80))
+    await new Promise(r=>setTimeout(r,80))
   }
 
+  // ❌ ไม่มีหน้า
   if(samples.length === 0) return null
 
-  // 🔥 ปรับให้ผ่านง่ายขึ้น
-  if(movement < 1){
-    console.log("low movement")
+  // =============================
+  // 🔥 LIVENESS CHECK
+  // =============================
+  if(!blinkDetected && movement < 2){
+    console.log("❌ not live")
+    return null
   }
 
+  // =============================
+  // 🧠 AVERAGE DESCRIPTOR
+  // =============================
   const avg = new Float32Array(samples[0].length)
 
-  samples.forEach(d => {
+  samples.forEach(d=>{
     for(let i=0;i<d.length;i++){
-      avg[i] += d[i]
+      avg[i]+=d[i]
     }
   })
 
   for(let i=0;i<avg.length;i++){
-    avg[i] /= samples.length
+    avg[i]/=samples.length
   }
 
   return avg
