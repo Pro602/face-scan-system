@@ -183,6 +183,7 @@ knownFaces = data.map(u=>({
   class:u.department,
   descriptors: u.descriptors.map(d => new Float32Array(d)) // 🔥 สำคัญ
 }))
+}
 
 // ================= LOAD LOCATION =================
 async function loadLocations(){
