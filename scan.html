@@ -218,60 +218,38 @@ function startScanLoop(){
 
   scanInterval = setInterval(async()=>{
 
-    // 🔒 กันทุกกรณี
     if(isProcessing || faceCaptured || isLocked || alreadySent) return
 
     isLocked = true
 
     try{
 
-      const detection = await faceapi
-        .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
-        .withFaceLandmarks()
-        .withFaceDescriptor()
+      status.innerText = "📸 กำลังสแกน..."
 
-      if(!detection){
+      // 🔥 ใช้ตัวใหม่แทนทั้งหมด
+      const descriptor = await captureWithLiveness()
+
+      if(!descriptor){
         isLocked = false
         return
       }
 
-      // ===== ตรวจหันหน้า =====
-      const nose = detection.landmarks.getNose()
-      const noseX = nose[3].x
-      const faceCenter = detection.detection.box.x + detection.detection.box.width/2
-
-      if(!challengePassed){
-
-        if(challenge==="LEFT" && noseX < faceCenter - 15){
-          challengePassed = true
-          status.innerText="✅ ผ่านการตรวจสอบ"
-        }
-
-        if(challenge==="RIGHT" && noseX > faceCenter + 15){
-          challengePassed = true
-          status.innerText="✅ ผ่านการตรวจสอบ"
-        }
-
-        isLocked = false
-        return
-      }
-
-      const best = findBestMatch(detection.descriptor)
+      const best = findBestMatch(descriptor)
 
       if(best && best.distance < MATCH_THRESHOLD){
-     // 🔥 เพิ่มเงื่อนไขกันพลาด
-  if(best.distance > 0.38){
-    isLocked = false
-    return
-  }
-        // 🔥 LOCK HARDCORE
+
+        // 🔥 กันพลาดเพิ่ม
+        if(best.distance > 0.38){
+          isLocked = false
+          return
+        }
+
         alreadySent = true
         faceCaptured = true
         isProcessing = true
 
         clearInterval(scanInterval)
 
-        // 🔥 หน่วงให้ภาพนิ่ง
         setTimeout(async ()=>{
           await confirmAttendance(best)
         }, 300)
@@ -521,6 +499,55 @@ function captureImage() {
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
   return canvas.toDataURL("image/jpeg", 0.5); 
+}
+async function captureWithLiveness(){
+
+  const samples = []
+  let prevNoseX = null
+  let movementDetected = false
+
+  for(let i=0;i<3;i++){
+
+    const det = await faceapi
+      .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
+      .withFaceLandmarks()
+      .withFaceDescriptor()
+
+    if(det){
+
+      samples.push(det.descriptor)
+
+      const nose = det.landmarks.getNose()
+      const noseX = nose[3].x
+
+      if(prevNoseX !== null){
+        if(Math.abs(noseX - prevNoseX) > 2){
+          movementDetected = true
+        }
+      }
+
+      prevNoseX = noseX
+    }
+
+    await new Promise(r=>setTimeout(r,120))
+  }
+
+  if(samples.length === 0) return null
+  if(!movementDetected) return null
+
+  const avg = new Float32Array(samples[0].length)
+
+  samples.forEach(d=>{
+    for(let i=0;i<d.length;i++){
+      avg[i]+=d[i]
+    }
+  })
+
+  for(let i=0;i<avg.length;i++){
+    avg[i]/=samples.length
+  })
+
+  return avg
 }
 </script>
 
