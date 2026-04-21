@@ -102,6 +102,7 @@ let isLocked = false
 let alreadySent = false   // 🔥 ตัวนี้สำคัญสุด
 let movementBuffer = []
 let challengeStartTime = 0
+  let jitterHistory = []
 const MATCH_THRESHOLD = 0.4
 
 // ================= AUDIO =================
@@ -606,6 +607,7 @@ async function captureSmartLiveness(){
   // 🔥 ค่าต่ำ = หลับตา
   return EAR < 0.20
 }
+
   function checkHeadMovement(landmarks){
 
   const nose = landmarks.getNose()[3]
@@ -620,14 +622,21 @@ async function captureSmartLiveness(){
   const dx = last.x - first.x
   const dy = last.y - first.y
 
-  // เคลียร์ buffer ทุกครั้ง
+  // 🔥 เพิ่ม jitter check
+  const isHuman = detectHumanJitter()
+
   movementBuffer = []
+
+  if(!isHuman){
+    console.log("too smooth = spoof")
+    return false
+  }
 
   switch(challenge){
     case "LEFT":
       return dx < -15
     case "RIGHT":
-      return dx > 10
+      return dx > 15
     case "UP":
       return dy < -15
     case "DOWN":
@@ -635,6 +644,23 @@ async function captureSmartLiveness(){
     default:
       return false
   }
+}
+  
+  function detectHumanJitter(){
+
+  if(movementBuffer.length < 5) return false
+
+  let jitter = 0
+
+  for(let i=1;i<movementBuffer.length;i++){
+    const dx = movementBuffer[i].x - movementBuffer[i-1].x
+    const dy = movementBuffer[i].y - movementBuffer[i-1].y
+
+    jitter += Math.abs(dx) + Math.abs(dy)
+  }
+
+  // 🔥 ถ้าเคลื่อนเรียบเกินไป = รูป/จอ
+  return jitter > 8
 }
   
 </script>
