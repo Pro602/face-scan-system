@@ -226,9 +226,9 @@ function startScanLoop(){
 
       status.innerText = "📸 กำลังสแกน..."
 
-      // 🔥 ใช้ตัวใหม่แทนทั้งหมด
-      const descriptor = await captureWithLiveness()
+      const descriptor = await captureSmartLiveness()
 
+      // ❌ ไม่ผ่าน liveness
       if(!descriptor){
         isLocked = false
         return
@@ -238,12 +238,13 @@ function startScanLoop(){
 
       if(best && best.distance < MATCH_THRESHOLD){
 
-        // 🔥 กันพลาดเพิ่ม
+        // กันพลาดเพิ่ม
         if(best.distance > 0.38){
           isLocked = false
           return
         }
 
+        // 🔥 LOCK
         alreadySent = true
         faceCaptured = true
         isProcessing = true
@@ -263,7 +264,7 @@ function startScanLoop(){
 
     isLocked = false
 
-  },400)
+  },300) // 🔥 เร็วขึ้น
 }
   
 // ================= MATCH =================
@@ -499,6 +500,59 @@ function captureImage() {
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
   return canvas.toDataURL("image/jpeg", 0.5); 
+}
+
+  async function captureSmartLiveness(){
+
+  const samples = []
+  let prevBox = null
+  let movement = 0
+
+  for(let i=0;i<3;i++){
+
+    const det = await faceapi
+      .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
+      .withFaceLandmarks()
+      .withFaceDescriptor()
+
+    if(det){
+
+      samples.push(det.descriptor)
+
+      const box = det.detection.box
+
+      if(prevBox){
+        const dx = Math.abs(box.x - prevBox.x)
+        const dy = Math.abs(box.y - prevBox.y)
+        movement += dx + dy
+      }
+
+      prevBox = box
+    }
+
+    await new Promise(r=>setTimeout(r,100))
+  }
+
+  // ❌ ไม่มีหน้า
+  if(samples.length < 2) return null
+
+  // ❌ ไม่มี movement → อาจเป็นรูป
+  if(movement < 5) return null
+
+  // ✅ average descriptor
+  const avg = new Float32Array(samples[0].length)
+
+  samples.forEach(d=>{
+    for(let i=0;i<d.length;i++){
+      avg[i]+=d[i]
+    }
+  })
+
+  for(let i=0;i<avg.length;i++){
+    avg[i]/=samples.length
+  }
+
+  return avg
 }
   
 </script>
