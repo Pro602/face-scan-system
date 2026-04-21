@@ -218,49 +218,58 @@ function startScanLoop(){
 
   scanInterval = setInterval(async()=>{
 
+    // 🔒 กันทุกสถานะ
     if(isProcessing || faceCaptured || isLocked || alreadySent) return
 
     isLocked = true
 
     try{
 
-status.innerText = "📸 กำลังสแกน..."
+      status.innerText = "📸 กำลังสแกน..."
 
-let descriptor = await captureSmartLiveness()
+      // =========================
+      // 🧠 LIVENESS
+      // =========================
+      let descriptor = await captureSmartLiveness()
 
-if(!descriptor){
-  console.log("fallback normal scan")
+      // =========================
+      // 🔥 FALLBACK (เครื่องช้า / กล้องกาก)
+      // =========================
+      if(!descriptor){
+        console.log("fallback normal scan")
 
-  const det = await faceapi
-    .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
-    .withFaceLandmarks()
-    .withFaceDescriptor()
+        const det = await faceapi
+          .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
+          .withFaceLandmarks()
+          .withFaceDescriptor()
 
-  if(!det){
-    isLocked = false
-    return
-  }
+        // ❌ ไม่เจอหน้า
+        if(!det) return
 
-  descriptor = det.descriptor
-}
+        // 🔥 กันภาพเบื้องต้น (ความมั่นใจต่ำไม่เอา)
+        if(det.detection.score < 0.6) return
 
-const best = findBestMatch(descriptor)
+        descriptor = det.descriptor
+      }
+
+      // =========================
+      // 🎯 MATCH
+      // =========================
+      const best = findBestMatch(descriptor)
 
       if(best && best.distance < MATCH_THRESHOLD){
 
-        // กันพลาดเพิ่ม
-        if(best.distance > 0.38){
-          isLocked = false
-          return
-        }
+        // 🔥 กันพลาดซ้ำ
+        if(best.distance > 0.38) return
 
-        // 🔥 LOCK
+        // 🔒 LOCK HARD
         alreadySent = true
         faceCaptured = true
         isProcessing = true
 
         clearInterval(scanInterval)
 
+        // หน่วงนิดให้ภาพนิ่ง
         setTimeout(async ()=>{
           await confirmAttendance(best)
         }, 300)
@@ -270,13 +279,14 @@ const best = findBestMatch(descriptor)
 
     }catch(err){
       console.error(err)
+
+    } finally {
+      // 🔓 ปลดล็อกเสมอ (สำคัญมาก)
+      isLocked = false
     }
 
-    isLocked = false
-
-  },450) // 🔥 เร็วขึ้น
+  },350) // ⚡ เร็ว + ไม่หนักเครื่อง
 }
-  
 // ================= MATCH =================
 function findBestMatch(query){
   let best = null
@@ -516,17 +526,11 @@ async function captureSmartLiveness(){
 
   const samples = []
   let blinkDetected = false
-  let prevEAR = null
-  let movement = 0
-  let prevBox = null
 
   for(let i=0;i<3;i++){
 
     const det = await faceapi
-      .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions({
-        inputSize: 224,
-        scoreThreshold: 0.5
-      }))
+      .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
       .withFaceLandmarks()
       .withFaceDescriptor()
 
@@ -534,58 +538,24 @@ async function captureSmartLiveness(){
 
       samples.push(det.descriptor)
 
-      // =============================
-      // 👁️ BLINK DETECTION (EAR)
-      // =============================
-      const leftEye = det.landmarks.getLeftEye()
-      const rightEye = det.landmarks.getRightEye()
-
-      function getEAR(eye){
-        const dist = (a,b)=>Math.hypot(a.x-b.x,a.y-b.y)
-        return (dist(eye[1],eye[5]) + dist(eye[2],eye[4])) / (2 * dist(eye[0],eye[3]))
+      // 🔥 ตรวจ blink
+      if(isBlinking(det.landmarks)){
+        blinkDetected = true
       }
-
-      const ear = (getEAR(leftEye) + getEAR(rightEye)) / 2
-
-      if(prevEAR !== null){
-        if(prevEAR > 0.25 && ear < 0.20){
-          blinkDetected = true
-        }
-      }
-
-      prevEAR = ear
-
-      // =============================
-      // 📦 MOVEMENT
-      // =============================
-      const box = det.detection.box
-
-      if(prevBox){
-        const dx = Math.abs(box.x - prevBox.x)
-        const dy = Math.abs(box.y - prevBox.y)
-        movement += dx + dy
-      }
-
-      prevBox = box
     }
 
-    await new Promise(r=>setTimeout(r,80))
+    await new Promise(r => setTimeout(r,120))
   }
 
-  // ❌ ไม่มีหน้า
   if(samples.length === 0) return null
 
-  // =============================
-  // 🔥 LIVENESS CHECK
-  // =============================
-  if(!blinkDetected && movement < 2){
-    console.log("❌ not live")
+  // ❌ ไม่กระพริบ = อาจเป็นรูป
+  if(!blinkDetected){
+    console.log("no blink detected")
     return null
   }
 
-  // =============================
-  // 🧠 AVERAGE DESCRIPTOR
-  // =============================
+  // ✅ average descriptor
   const avg = new Float32Array(samples[0].length)
 
   samples.forEach(d=>{
@@ -599,6 +569,26 @@ async function captureSmartLiveness(){
   }
 
   return avg
+}
+
+  function isBlinking(landmarks){
+  const leftEye = landmarks.getLeftEye()
+  const rightEye = landmarks.getRightEye()
+
+  function eyeAspectRatio(eye){
+    const A = Math.hypot(eye[1].x - eye[5].x, eye[1].y - eye[5].y)
+    const B = Math.hypot(eye[2].x - eye[4].x, eye[2].y - eye[4].y)
+    const C = Math.hypot(eye[0].x - eye[3].x, eye[0].y - eye[3].y)
+    return (A + B) / (2.0 * C)
+  }
+
+  const leftEAR = eyeAspectRatio(leftEye)
+  const rightEAR = eyeAspectRatio(rightEye)
+
+  const EAR = (leftEAR + rightEAR) / 2
+
+  // 🔥 ค่าต่ำ = หลับตา
+  return EAR < 0.20
 }
   
 </script>
