@@ -103,6 +103,8 @@ let alreadySent = false   // 🔥 ตัวนี้สำคัญสุด
 let movementBuffer = []
 let challengeStartTime = 0
   let jitterHistory = []
+  let challengeList = []
+let currentStep = 0
 const MATCH_THRESHOLD = 0.4
 
 // ================= AUDIO =================
@@ -166,20 +168,29 @@ function startAll(){
 function generateChallenge(){
 
   const actions = ["LEFT","RIGHT","UP","DOWN"]
-  challenge = actions[Math.floor(Math.random()*actions.length)]
 
-  challengePassed = false
+  // 🔥 สุ่ม 2 ท่า
+  challengeList = [
+    actions[Math.floor(Math.random()*actions.length)],
+    actions[Math.floor(Math.random()*actions.length)]
+  ]
+
+  currentStep = 0
   movementBuffer = []
   challengeStartTime = Date.now()
 
-  const textMap = {
-    LEFT: "👉 หันหน้าไปทางซ้ายเร็วๆ",
-    RIGHT: "👉 หันหน้าไปทางขวาเร็วๆ",
-    UP: "👉 เงยหน้าขึ้น",
-    DOWN: "👉 ก้มหน้าลง"
+  showCurrentStep()
+}
+
+function showCurrentStep(){
+  const map = {
+    LEFT: "👉 หันซ้าย",
+    RIGHT: "👉 หันขวา",
+    UP: "👉 เงยหน้า",
+    DOWN: "👉 ก้มหน้า"
   }
 
-  status.innerText = textMap[challenge]
+  status.innerText = map[challengeList[currentStep]]
 }
 
 // ================= LOAD FACE =================
@@ -539,9 +550,9 @@ async function captureSmartLiveness(){
 
   for(let i=0;i<5;i++){
 
-    // ⏱ กันทำช้า (สำคัญ)
-    if(Date.now() - challengeStartTime > 1500){
-      console.log("too slow")
+    // ⏱ timeout กันโกง
+    if(Date.now() - challengeStartTime > 2000){
+      console.log("timeout")
       return null
     }
 
@@ -554,7 +565,6 @@ async function captureSmartLiveness(){
 
       samples.push(det.descriptor)
 
-      // 🔥 ตรวจการขยับจริง
       if(checkHeadMovement(det.landmarks)){
         movementOK = true
       }
@@ -564,15 +574,9 @@ async function captureSmartLiveness(){
     await new Promise(r => setTimeout(r,100))
   }
 
-  // ❌ ไม่ขยับ = รูป
-  if(!movementOK){
-    console.log("no movement detected")
-    return null
-  }
-
+  if(!movementOK) return null
   if(samples.length === 0) return null
 
-  // ✅ average descriptor
   const avg = new Float32Array(samples[0].length)
 
   samples.forEach(d=>{
@@ -587,7 +591,6 @@ async function captureSmartLiveness(){
 
   return avg
 }
-
   function isBlinking(landmarks){
   const leftEye = landmarks.getLeftEye()
   const rightEye = landmarks.getRightEye()
@@ -608,10 +611,9 @@ async function captureSmartLiveness(){
   return EAR < 0.20
 }
 
-  function checkHeadMovement(landmarks){
+function checkHeadMovement(landmarks){
 
   const nose = landmarks.getNose()[3]
-
   movementBuffer.push({x:nose.x, y:nose.y})
 
   if(movementBuffer.length < 5) return false
@@ -622,28 +624,33 @@ async function captureSmartLiveness(){
   const dx = last.x - first.x
   const dy = last.y - first.y
 
-  // 🔥 เพิ่ม jitter check
-  const isHuman = detectHumanJitter()
+  const action = challengeList[currentStep]
+
+  let passed = false
+
+  switch(action){
+    case "LEFT": passed = dx < -15; break
+    case "RIGHT": passed = dx > 15; break
+    case "UP": passed = dy < -15; break
+    case "DOWN": passed = dy > 15; break
+  }
 
   movementBuffer = []
 
-  if(!isHuman){
-    console.log("too smooth = spoof")
-    return false
+  if(passed){
+    currentStep++
+
+    // 🔥 ไป step ต่อไป
+    if(currentStep < challengeList.length){
+      showCurrentStep()
+      return false
+    }
+
+    // ✅ ผ่านครบ
+    return true
   }
 
-  switch(challenge){
-    case "LEFT":
-      return dx < -15
-    case "RIGHT":
-      return dx > 15
-    case "UP":
-      return dy < -15
-    case "DOWN":
-      return dy > 15
-    default:
-      return false
-  }
+  return false
 }
   
   function detectHumanJitter(){
