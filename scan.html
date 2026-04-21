@@ -501,55 +501,6 @@ function captureImage() {
   return canvas.toDataURL("image/jpeg", 0.5); 
 }
   
-async function captureWithLiveness(){
-
-  const samples = []
-  let prevNoseX = null
-  let movementDetected = false
-
-  for(let i=0;i<3;i++){
-
-    const det = await faceapi
-      .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
-      .withFaceLandmarks()
-      .withFaceDescriptor()
-
-    if(det){
-
-      samples.push(det.descriptor)
-
-      const nose = det.landmarks.getNose()
-      const noseX = nose[3].x
-
-      if(prevNoseX !== null){
-        if(Math.abs(noseX - prevNoseX) > 2){
-          movementDetected = true
-        }
-      }
-
-      prevNoseX = noseX
-    }
-
-    await new Promise(r=>setTimeout(r,120))
-  }
-
-  if(samples.length === 0) return null
-  if(!movementDetected) return null
-
-  const avg = new Float32Array(samples[0].length)
-
-  samples.forEach(d=>{
-    for(let i=0;i<d.length;i++){
-      avg[i]+=d[i]
-    }
-  })
-
-  for(let i=0;i<avg.length;i++){
-    avg[i]/=samples.length
-  })
-
-  return avg
-}
 </script>
 
 </body>
