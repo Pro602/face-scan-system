@@ -100,6 +100,8 @@ let isDetecting = false   // 🔥 ตัวนี้สำคัญ
 let faceCaptured = false
 let isLocked = false
 let alreadySent = false   // 🔥 ตัวนี้สำคัญสุด
+let movementBuffer = []
+let challengeStartTime = 0
 const MATCH_THRESHOLD = 0.4
 
 // ================= AUDIO =================
@@ -161,15 +163,22 @@ function startAll(){
 
 // ================= RANDOM ACTION =================
 function generateChallenge(){
-  const actions = ["LEFT","RIGHT"]
-  challenge = actions[Math.floor(Math.random()*actions.length)]
-  challengePassed = false
 
-  if(challenge==="LEFT"){
-    status.innerText="👉 กรุณาหันหน้าไปทางซ้าย"
-  }else{
-    status.innerText="👉 กรุณาหันหน้าไปทางขวา"
+  const actions = ["LEFT","RIGHT","UP","DOWN"]
+  challenge = actions[Math.floor(Math.random()*actions.length)]
+
+  challengePassed = false
+  movementBuffer = []
+  challengeStartTime = Date.now()
+
+  const textMap = {
+    LEFT: "👉 หันหน้าไปทางซ้ายเร็วๆ",
+    RIGHT: "👉 หันหน้าไปทางขวาเร็วๆ",
+    UP: "👉 เงยหน้าขึ้น",
+    DOWN: "👉 ก้มหน้าลง"
   }
+
+  status.innerText = textMap[challenge]
 }
 
 // ================= LOAD FACE =================
@@ -525,9 +534,15 @@ function captureImage() {
 async function captureSmartLiveness(){
 
   const samples = []
-  let blinkDetected = false
+  let movementOK = false
 
-  for(let i=0;i<3;i++){
+  for(let i=0;i<5;i++){
+
+    // ⏱ กันทำช้า (สำคัญ)
+    if(Date.now() - challengeStartTime > 1500){
+      console.log("too slow")
+      return null
+    }
 
     const det = await faceapi
       .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
@@ -538,22 +553,23 @@ async function captureSmartLiveness(){
 
       samples.push(det.descriptor)
 
-      // 🔥 ตรวจ blink
-      if(isBlinking(det.landmarks)){
-        blinkDetected = true
+      // 🔥 ตรวจการขยับจริง
+      if(checkHeadMovement(det.landmarks)){
+        movementOK = true
       }
+
     }
 
-    await new Promise(r => setTimeout(r,120))
+    await new Promise(r => setTimeout(r,100))
+  }
+
+  // ❌ ไม่ขยับ = รูป
+  if(!movementOK){
+    console.log("no movement detected")
+    return null
   }
 
   if(samples.length === 0) return null
-
-  // ❌ ไม่กระพริบ = อาจเป็นรูป
-  if(!blinkDetected){
-    console.log("no blink detected")
-    return null
-  }
 
   // ✅ average descriptor
   const avg = new Float32Array(samples[0].length)
@@ -589,6 +605,36 @@ async function captureSmartLiveness(){
 
   // 🔥 ค่าต่ำ = หลับตา
   return EAR < 0.20
+}
+  function checkHeadMovement(landmarks){
+
+  const nose = landmarks.getNose()[3]
+
+  movementBuffer.push({x:nose.x, y:nose.y})
+
+  if(movementBuffer.length < 5) return false
+
+  const first = movementBuffer[0]
+  const last = movementBuffer[movementBuffer.length-1]
+
+  const dx = last.x - first.x
+  const dy = last.y - first.y
+
+  // เคลียร์ buffer ทุกครั้ง
+  movementBuffer = []
+
+  switch(challenge){
+    case "LEFT":
+      return dx < -15
+    case "RIGHT":
+      return dx > 10
+    case "UP":
+      return dy < -15
+    case "DOWN":
+      return dy > 15
+    default:
+      return false
+  }
 }
   
 </script>
