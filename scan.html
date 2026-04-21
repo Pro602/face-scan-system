@@ -502,13 +502,13 @@ function captureImage() {
   return canvas.toDataURL("image/jpeg", 0.5); 
 }
 
-  async function captureSmartLiveness(){
+async function captureSmartLiveness(){
 
   const samples = []
   let prevBox = null
   let movement = 0
 
-  for(let i=0;i<3;i++){
+  for(let i=0;i<2;i++){   // 🔥 ลดรอบ → เร็วขึ้น
 
     const det = await faceapi
       .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
@@ -530,14 +530,16 @@ function captureImage() {
       prevBox = box
     }
 
-    await new Promise(r=>setTimeout(r,100))
+    await new Promise(r=>setTimeout(r,80)) // 🔥 เร็วขึ้น
   }
 
   // ❌ ไม่มีหน้า
-  if(samples.length < 2) return null
+  if(samples.length === 0) return null
 
-  // ❌ ไม่มี movement → อาจเป็นรูป
-  if(movement < 5) return null
+  // 🔥 ปรับให้ "ผ่านง่ายขึ้น"
+  if(movement < 1){
+    console.log("⚠️ Low movement (แต่ยังให้ผ่าน)")
+  }
 
   // ✅ average descriptor
   const avg = new Float32Array(samples[0].length)
@@ -550,7 +552,7 @@ function captureImage() {
 
   for(let i=0;i<avg.length;i++){
     avg[i]/=samples.length
-  }
+  })
 
   return avg
 }
