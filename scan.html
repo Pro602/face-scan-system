@@ -256,19 +256,13 @@ function startScanLoop(){
       // =========================
       // 🔥 FALLBACK (เครื่องช้า / กล้องกาก)
       // =========================
-      if(!descriptor){
-        console.log("fallback normal scan")
+     if(!descriptor){
+  console.log("liveness failed")
 
-        const det = await faceapi
-          .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
-          .withFaceLandmarks()
-          .withFaceDescriptor()
+  status.innerText = "❌ กรุณาขยับศีรษะตามคำสั่ง"
 
-        // ❌ ไม่เจอหน้า
-        if(!det) return
-
-        // 🔥 กันภาพเบื้องต้น (ความมั่นใจต่ำไม่เอา)
-        if(det.detection.score < 0.6) return
+  return   // 🔥 หยุดทันที ห้าม fallback
+}
 
         descriptor = det.descriptor
       }
