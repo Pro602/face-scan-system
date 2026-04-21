@@ -100,7 +100,7 @@ let isDetecting = false   // 🔥 ตัวนี้สำคัญ
 let faceCaptured = false
 let isLocked = false
 let alreadySent = false   // 🔥 ตัวนี้สำคัญสุด
-const MATCH_THRESHOLD = 0.38
+const MATCH_THRESHOLD = 0.4
 
 // ================= AUDIO =================
 let audioReady = false
@@ -177,12 +177,12 @@ async function loadFaceDatabase(){
   const res = await fetch(API_URL+"?action=faces&t="+Date.now())
   const data = await res.json()
 
-knownFaces = data.map(u=>({
-  studentId:u.studentId,
-  name:u.name,
-  class:u.department,
-  descriptors: u.descriptors.map(d => new Float32Array(d)) // 🔥 สำคัญ
-}))
+  knownFaces = data.map(u => ({
+    studentId: u.studentId,
+    name: u.name,
+    class: u.department,
+    descriptor: new Float32Array(u.descriptor) // ✅ ตัวเดียว
+  }))
 }
 
 // ================= LOAD LOCATION =================
@@ -290,27 +290,14 @@ function startScanLoop(){
   
 // ================= MATCH =================
 function findBestMatch(query){
-
   let best = null
 
-  knownFaces.forEach(user => {
+  knownFaces.forEach(face=>{
+    const dist = faceapi.euclideanDistance(query, face.descriptor)
 
-    let minDist = Infinity
-
-    user.descriptors.forEach(desc => {
-      const dist = faceapi.euclideanDistance(query, desc)
-      if(dist < minDist) minDist = dist
-    })
-
-    if(!best || minDist < best.distance){
-      best = {
-        studentId: user.studentId,
-        name: user.name,
-        class: user.class,
-        distance: minDist
-      }
+    if(!best || dist < best.distance){
+      best = {...face, distance: dist}
     }
-
   })
 
   return best
