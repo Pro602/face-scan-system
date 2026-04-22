@@ -31,6 +31,9 @@ video{
   max-width:420px;
   border-radius:15px;
   transform:scaleX(-1);
+
+  /* ช่วยภาพสว่างขึ้นบนมือถือ */
+  filter: brightness(1.15) contrast(1.05);
 }
 button{
   padding:12px 25px;
@@ -231,11 +234,13 @@ async function loadLocations(){
 // ================= CAMERA =================
 function startCamera(){
 
-  navigator.mediaDevices.getUserMedia({
-    video:{
-      facingMode:"user"
-    }
-  })
+navigator.mediaDevices.getUserMedia({
+  video:{
+    facingMode:"user",
+    width:{ ideal:1280 },
+    height:{ ideal:720 }
+  }
+})
 
   .then(stream=>{
 
@@ -297,7 +302,13 @@ function startScanLoop(){
       if(!det){
         return
       }
+// 🔥 หน้าเล็กเกินไป
+const box = det.detection.box
 
+if(box.width < 120){
+  status.innerText = "📸 กรุณาเข้าใกล้กล้อง"
+  return
+}
       // =========================
       // 🔥 กันรูปภาพ
       // =========================
@@ -392,8 +403,8 @@ async function buildStableDescriptor(){
       .detectSingleFace(
         video,
        new faceapi.TinyFaceDetectorOptions({
-  inputSize: 320,
-  scoreThreshold: 0.5
+  inputSize: 416,
+  scoreThreshold: 0.35
 })
       )
 
