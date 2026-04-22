@@ -5,20 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ลงทะเบียนใบหน้า - THAISIAM</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <!-- ใช้ CDN ของ vladmandic สำหรับ face-api ที่เสถียรที่สุดบนเว็บ -->
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Kanit', sans-serif; background-color: #0f172a; color: white; }
         .camera-container { position: relative; width: 100%; max-width: 400px; aspect-ratio: 1/1; border-radius: 30px; overflow: hidden; background: #1e293b; border: 4px solid #334155; margin: 0 auto; }
         #video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-        .step-indicator { display: flex; justify-content: center; gap: 8px; margin-top: 15px; }
-        .dot { width: 12px; height: 12px; border-radius: 50%; background: #334155; transition: all 0.3s; border: 2px solid transparent; }
-        .dot.active { background: #6366f1; transform: scale(1.3); box-shadow: 0 0 10px #6366f1; border-color: white; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; background: #334155; transition: all 0.3s; }
+        .dot.active { background: #6366f1; transform: scale(1.3); box-shadow: 0 0 10px #6366f1; }
         .dot.done { background: #10b981; }
         .glass-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
-        
-        /* Flash effect when capturing */
         @keyframes flash { 0% { opacity: 0; } 50% { opacity: 1; } 100% { opacity: 0; } }
         .flash-active { animation: flash 0.3s ease-out; }
     </style>
@@ -27,59 +25,41 @@
 
     <div class="w-full max-w-md space-y-6">
         <div class="flex items-center gap-4">
-            <? var url = ScriptApp.getService().getUrl(); ?>
-            <a href="<?= url ?>" class="p-2 bg-slate-800 rounded-full hover:bg-slate-700 transition-colors">
+            <button onclick="window.top.location.href='<?= ScriptApp.getService().getUrl() ?>'" class="p-2 bg-slate-800 rounded-full">
                 <i data-lucide="arrow-left"></i>
-            </a>
+            </button>
             <h1 class="text-xl font-bold">ลงทะเบียนพนักงานใหม่</h1>
         </div>
 
         <!-- 🔐 ADMIN LOGIN -->
-        <div id="loginBox" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/95 p-6" style="display:none;">
-            <div class="glass-card w-full max-w-xs p-8 rounded-3xl space-y-4 text-center shadow-2xl">
-                <div class="w-16 h-16 bg-indigo-500/20 rounded-2xl flex items-center justify-center mx-auto mb-2">
-                    <i data-lucide="lock" class="text-indigo-400 w-8 h-8"></i>
-                </div>
+        <div id="loginBox" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/95 p-6" style="display: flex;">
+            <div class="glass-card w-full max-w-xs p-8 rounded-3xl space-y-4 text-center">
+                <i data-lucide="lock" class="mx-auto text-indigo-400 w-12 h-12"></i>
                 <h3 class="text-lg font-bold">สิทธิ์เฉพาะผู้ดูแล</h3>
-                <p class="text-slate-400 text-xs">กรุณาเข้าสู่ระบบเพื่อลงทะเบียน</p>
-                <input id="loginUser" type="text" placeholder="ชื่อผู้ใช้" class="w-full bg-slate-800 border-none rounded-xl p-3 text-white outline-none focus:ring-2 focus:ring-indigo-500">
-                <input id="loginPass" type="password" placeholder="รหัสผ่าน" class="w-full bg-slate-800 border-none rounded-xl p-3 text-white outline-none focus:ring-2 focus:ring-indigo-500">
-                <button onclick="doLogin()" class="w-full bg-indigo-600 py-3 rounded-xl font-bold hover:bg-indigo-500 transition-all">เข้าสู่ระบบ</button>
+                <input id="loginUser" type="text" placeholder="ชื่อผู้ใช้" class="w-full bg-slate-800 rounded-xl p-3 outline-none">
+                <input id="loginPass" type="password" placeholder="รหัสผ่าน" class="w-full bg-slate-800 rounded-xl p-3 outline-none">
+                <button onclick="doLogin()" class="w-full bg-indigo-600 py-3 rounded-xl font-bold">เข้าสู่ระบบ</button>
             </div>
         </div>
 
-        <!-- กล้องและคำแนะนำ -->
+        <!-- Camera Section -->
         <div class="space-y-4 text-center">
             <div id="status" class="text-indigo-400 font-medium h-6 text-sm">กำลังเตรียมระบบ AI...</div>
-            <div class="camera-container shadow-2xl shadow-indigo-500/10">
+            <div class="camera-container">
                 <video id="video" autoplay muted playsinline></video>
-                <div id="capture-overlay" class="absolute inset-0 border-[12px] border-emerald-500 opacity-0 pointer-events-none z-10"></div>
-                <!-- Guide Frame -->
-                <div class="absolute inset-0 border-2 border-dashed border-white/20 rounded-[26px] m-10 pointer-events-none"></div>
+                <div id="capture-overlay" class="absolute inset-0 border-[12px] border-emerald-500 opacity-0 pointer-events-none"></div>
             </div>
-            <div class="step-indicator" id="step-dots">
+            <div class="flex justify-center gap-2" id="step-dots">
                 <div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
             </div>
         </div>
 
-        <!-- ฟอร์มข้อมูล -->
-        <div class="glass-card p-6 rounded-3xl space-y-4 shadow-xl border border-white/5">
-            <div class="space-y-3">
-                <div>
-                    <label class="text-[10px] text-slate-400 uppercase tracking-widest ml-1 mb-1 block">รหัสพนักงาน</label>
-                    <input id="studentId" type="text" placeholder="เช่น 660123" class="w-full bg-slate-900/50 border-none rounded-xl p-4 text-white focus:ring-2 focus:ring-indigo-500 outline-none">
-                </div>
-                <div>
-                    <label class="text-[10px] text-slate-400 uppercase tracking-widest ml-1 mb-1 block">ชื่อ-นามสกุล</label>
-                    <input id="username" type="text" placeholder="ภาษาไทยหรืออังกฤษ" class="w-full bg-slate-900/50 border-none rounded-xl p-4 text-white focus:ring-2 focus:ring-indigo-500 outline-none">
-                </div>
-                <div>
-                    <label class="text-[10px] text-slate-400 uppercase tracking-widest ml-1 mb-1 block">แผนก / ฝ่าย</label>
-                    <input id="userClass" type="text" placeholder="เช่น การตลาด / คลังสินค้า" class="w-full bg-slate-900/50 border-none rounded-xl p-4 text-white focus:ring-2 focus:ring-indigo-500 outline-none">
-                </div>
-            </div>
-
-            <button id="btnSave" disabled onclick="startScanningSequence()" class="w-full bg-indigo-600 py-4 rounded-2xl font-bold text-white shadow-lg shadow-indigo-600/30 active:scale-[0.98] transition-all disabled:opacity-30 disabled:cursor-not-allowed">
+        <!-- Form Section -->
+        <div class="glass-card p-6 rounded-3xl space-y-4">
+            <input id="studentId" type="text" placeholder="รหัสพนักงาน" class="w-full bg-slate-900 rounded-xl p-4 outline-none">
+            <input id="username" type="text" placeholder="ชื่อ-นามสกุล" class="w-full bg-slate-900 rounded-xl p-4 outline-none">
+            <input id="userDept" type="text" placeholder="แผนก" class="w-full bg-slate-900 rounded-xl p-4 outline-none">
+            <button id="btnSave" disabled onclick="startScanningSequence()" class="w-full bg-indigo-600 py-4 rounded-2xl font-bold disabled:opacity-30">
                 📸 เริ่มบันทึกใบหน้า 5 มุมมอง
             </button>
         </div>
@@ -92,12 +72,10 @@
         const btnSave = document.getElementById("btnSave");
         const dots = document.querySelectorAll(".dot");
         let descriptors = [];
-        let isCapturing = false;
 
         window.onload = () => {
-            // ตรวจสอบ Login (ใช้ Session ประจำการเปิดเบราว์เซอร์นี้)
-            if (sessionStorage.getItem("isAdmin") !== "true") {
-                document.getElementById("loginBox").style.display = "flex";
+            if (sessionStorage.getItem("isAdmin") === "true") {
+                document.getElementById("loginBox").style.display = "none";
             }
             initAI();
         };
@@ -105,8 +83,6 @@
         function doLogin() {
             const user = document.getElementById("loginUser").value;
             const pass = document.getElementById("loginPass").value;
-            if(!user || !pass) return alert("กรุณากรอกชื่อผู้ใช้และรหัสผ่าน");
-
             google.script.run.withSuccessHandler(res => {
                 if (res.success) {
                     sessionStorage.setItem("isAdmin", "true");
@@ -126,111 +102,71 @@
                     faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
                 ]);
                 statusDiv.innerText = "พร้อมลงทะเบียน";
-                startCamera();
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+                video.srcObject = stream;
                 btnSave.disabled = false;
             } catch (e) {
-                statusDiv.innerText = "❌ โหลดโมเดลไม่สำเร็จ กรุณาเช็คเน็ต";
-                console.error(e);
-            }
-        }
-
-        async function startCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "user", width: 640, height: 640 } 
-                });
-                video.srcObject = stream;
-            } catch (err) {
-                alert("❌ ไม่สามารถเข้าถึงกล้องได้: " + err);
+                statusDiv.innerText = "❌ โหลด AI ไม่สำเร็จ";
             }
         }
 
         async function startScanningSequence() {
-            const sid = document.getElementById("studentId").value.trim();
-            const name = document.getElementById("username").value.trim();
-            const dept = document.getElementById("userClass").value.trim();
-            
-            if (!sid || !name) return alert("กรุณากรอกรหัสพนักงานและชื่อให้ครบ");
+            const sid = document.getElementById("studentId").value;
+            const name = document.getElementById("username").value;
+            if(!sid || !name) return alert("กรอกข้อมูลให้ครบ");
 
-            isCapturing = true;
             btnSave.disabled = true;
             descriptors = [];
-            const steps = ["มองตรง", "หันซ้ายเล็กน้อย", "หันขวาเล็กน้อย", "เงยหน้าเล็กน้อย", "ก้มหน้าเล็กน้อย"];
+            const steps = ["มองตรง", "หันซ้าย", "หันขวา", "เงยหน้า", "ก้มหน้า"];
 
-            for (let i = 0; i < steps.length; i++) {
-                updateStepUI(i);
+            for (let i = 0; i < 5; i++) {
+                dots.forEach((d, idx) => d.classList.toggle("active", idx === i));
                 statusDiv.innerText = `ขั้นตอนที่ ${i+1}: ${steps[i]}`;
+                await new Promise(r => setTimeout(r, 2000));
+
+                const detect = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
                 
-                // รอให้พนักงานเตรียมตัว
-                await new Promise(r => setTimeout(r, 1800));
-
-                const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-                    .withFaceLandmarks()
-                    .withFaceDescriptor();
-
-                if (!detection) {
-                    statusDiv.innerText = "❌ ไม่พบใบหน้า! ลองใหม่อีกครั้ง";
-                    i--; // ถอยกลับไปขั้นตอนเดิม
-                    continue;
+                if (detect) {
+                    descriptors.push(Array.from(detect.descriptor));
+                    document.getElementById('capture-overlay').classList.add('flash-active');
+                    setTimeout(() => document.getElementById('capture-overlay').classList.remove('flash-active'), 300);
+                    dots[i].classList.add("done");
+                } else {
+                    statusDiv.innerText = "❌ ไม่พบใบหน้า ลองใหม่...";
+                    i--;
                 }
-
-                descriptors.push(Array.from(detection.descriptor));
-                flashOverlay();
-                dots[i].classList.add('done');
             }
-
-            statusDiv.innerText = "⏳ กำลังบันทึกลงฐานข้อมูล...";
-            saveToDatabase(sid, name, dept);
+            saveData(sid, name);
         }
 
-        function saveToDatabase(sid, name, dept) {
-            // ถ่ายรูปโปรไฟล์ (หน้าตรงครั้งสุดท้าย)
+        function saveData(sid, name) {
+            statusDiv.innerText = "⏳ กำลังบันทึก...";
+            const dept = document.getElementById("userDept").value;
+            
+            // ถ่ายรูปหน้าตรงไว้ 1 รูป
             const canvas = document.createElement('canvas');
-            canvas.width = 400;
-            canvas.height = 400;
+            canvas.width = 400; canvas.height = 400;
             const ctx = canvas.getContext('2d');
-            ctx.translate(canvas.width, 0);
-            ctx.scale(-1, 1);
+            ctx.translate(400, 0); ctx.scale(-1, 1);
             ctx.drawImage(video, 0, 0, 400, 400);
-            const base64 = canvas.toDataURL('image/jpeg', 0.8);
-
+            
             const payload = {
                 id: sid,
                 name: name,
                 department: dept,
-                image: base64,
-                descriptors: descriptors // ส่งเป็นอาเรย์ของ 5 เวกเตอร์
+                image: canvas.toDataURL('image/jpeg', 0.7),
+                descriptors: descriptors
             };
 
             google.script.run.withSuccessHandler(res => {
-                if(res.success) {
+                if (res.success) {
                     statusDiv.innerText = "✅ ลงทะเบียนสำเร็จ!";
-                    setTimeout(() => window.location.reload(), 2000);
+                    setTimeout(() => window.top.location.href = '<?= ScriptApp.getService().getUrl() ?>', 2000);
                 } else {
-                    alert("เกิดข้อผิดพลาด: " + res.message);
-                    resetUI();
+                    alert("ล้มเหลว: " + res.message);
+                    btnSave.disabled = false;
                 }
             }).registerNewEmployee(payload);
-        }
-
-        function updateStepUI(index) {
-            dots.forEach((dot, i) => {
-                dot.classList.remove('active');
-                if (i === index) dot.classList.add('active');
-            });
-        }
-
-        function flashOverlay() {
-            const overlay = document.getElementById('capture-overlay');
-            overlay.classList.add('flash-active');
-            setTimeout(() => overlay.classList.remove('flash-active'), 300);
-        }
-
-        function resetUI() {
-            isCapturing = false;
-            btnSave.disabled = false;
-            dots.forEach(dot => dot.classList.remove('active', 'done'));
-            statusDiv.innerText = "พร้อมลงทะเบียน";
         }
     </script>
 </body>
