@@ -3,157 +3,170 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ลงทะเบียนพนักงานใหม่ - THAISIAM</title>
+    <title>ลงทะเบียนใบหน้า - THAISIAM</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- ใช้ CDN สำรองที่เสถียรกว่าสำหรับ face-api -->
-    <script src="https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/dist/face-api.min.js"></script>
+    <!-- เปลี่ยนมาใช้ CDN ที่เสถียรกว่าสำหรับ face-api -->
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Kanit', sans-serif; background-color: #0f172a; color: white; overflow-x: hidden; }
-        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
-        .camera-box { position: relative; width: 100%; max-width: 400px; aspect-ratio: 1/1; border-radius: 2rem; overflow: hidden; border: 4px solid #334155; margin: 0 auto; }
+        body { font-family: 'Kanit', sans-serif; background-color: #0f172a; color: white; min-height: 100vh; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
+        .camera-container { position: relative; width: 100%; max-width: 380px; aspect-ratio: 1/1; border-radius: 2rem; overflow: hidden; border: 4px solid #334155; margin: 0 auto; box-shadow: 0 0 40px rgba(0,0,0,0.5); }
         video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-        input { background: #1e293b !important; border: 1px solid #334155 !important; color: white !important; }
-        input:focus { border-color: #6366f1 !important; ring: 2px #6366f1; }
-        .step-dot { width: 8px; height: 8px; border-radius: 50%; background: #334155; transition: all 0.3s; }
-        .step-dot.active { background: #6366f1; transform: scale(1.5); }
-        #loginOverlay { position: fixed; inset: 0; z-index: 1000; background: rgba(15, 23, 42, 0.95); display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); }
+        input { background: #1e293b !important; border: 1px solid #334155 !important; color: white !important; transition: all 0.2s; }
+        input:focus { border-color: #6366f1 !important; box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2); }
+        #loginOverlay { position: fixed; inset: 0; z-index: 9999; background: #0f172a; display: flex; align-items: center; justify-content: center; }
+        .step-dot { width: 10px; height: 10px; border-radius: 50%; background: #334155; }
+        .step-dot.active { background: #6366f1; transform: scale(1.3); box-shadow: 0 0 10px #6366f1; }
     </style>
 </head>
-<body class="min-h-screen flex flex-col items-center p-4">
+<body class="p-4 flex flex-col items-center">
 
-    <!-- 🔐 Login Overlay (เหมือนรูปที่ 3-4) -->
+    <!-- 🔐 หน้า Login (เหมือนรูปที่ 3-4) -->
     <div id="loginOverlay">
-        <div class="glass-panel p-8 rounded-[2.5rem] w-full max-w-sm text-center shadow-2xl">
+        <div class="glass p-8 rounded-[2.5rem] w-full max-w-sm text-center">
             <div class="w-16 h-16 bg-indigo-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
                 <i data-lucide="lock" class="text-indigo-400 w-8 h-8"></i>
             </div>
-            <h2 class="text-2xl font-bold mb-2">สิทธิ์เฉพาะผู้ดูแล</h2>
-            <p class="text-slate-400 text-sm mb-8">กรุณาเข้าสู่ระบบเพื่อลงทะเบียนพนักงาน</p>
+            <h2 class="text-2xl font-bold mb-2 text-white">สิทธิ์เฉพาะผู้ดูแล</h2>
+            <p class="text-slate-400 text-sm mb-8">กรุณาเข้าสู่ระบบเพื่อลงทะเบียน</p>
             
             <div class="space-y-4">
                 <input type="text" id="admUser" placeholder="ชื่อผู้ใช้งาน" class="w-full p-4 rounded-xl outline-none">
                 <input type="password" id="admPass" placeholder="รหัสผ่าน" class="w-full p-4 rounded-xl outline-none">
-                <button onclick="checkAdmin()" class="w-full bg-indigo-600 hover:bg-indigo-500 p-4 rounded-xl font-bold transition-all mt-4">เข้าสู่ระบบ</button>
+                <button onclick="handleLogin()" class="w-full bg-indigo-600 hover:bg-indigo-500 p-4 rounded-xl font-bold transition-all mt-2">เข้าสู่ระบบ</button>
             </div>
         </div>
     </div>
 
-    <!-- Main Content -->
-    <div class="w-full max-w-lg mt-8">
+    <!-- 📸 หน้าหลักลงทะเบียน -->
+    <div id="mainContent" class="w-full max-w-md hidden opacity-0 transition-opacity duration-500">
         <div class="flex items-center gap-4 mb-6">
             <button onclick="location.reload()" class="p-2 hover:bg-slate-800 rounded-full transition-colors">
-                <i data-lucide="arrow-left"></i>
+                <i data-lucide="chevron-left"></i>
             </button>
             <h1 class="text-xl font-semibold">ลงทะเบียนใบหน้า (5 มุม)</h1>
         </div>
 
-        <div id="statusLabel" class="text-center mb-4 flex items-center justify-center gap-2 text-rose-400">
-            <i data-lucide="loader-2" class="animate-spin w-4 h-4"></i>
-            <span>กำลังเตรียมระบบ AI...</span>
+        <!-- แจ้งเตือนสถานะ AI -->
+        <div id="statusBox" class="flex items-center justify-center gap-3 p-3 rounded-2xl mb-4 bg-slate-800/50 border border-slate-700">
+            <div id="statusIcon" class="animate-spin rounded-full h-4 w-4 border-2 border-indigo-500 border-t-transparent"></div>
+            <span id="statusText" class="text-sm text-slate-300 font-medium">กำลังเตรียมระบบ AI...</span>
         </div>
 
-        <div class="camera-box mb-6 shadow-2xl shadow-indigo-500/10">
+        <div class="camera-container mb-6">
             <video id="video" autoplay muted playsinline></video>
-            <!-- Overlay Guide -->
-            <div class="absolute inset-0 border-[40px] border-black/40 pointer-events-none"></div>
+            <div class="absolute inset-0 border-[30px] border-black/30 pointer-events-none rounded-[2rem]"></div>
         </div>
 
-        <!-- Step Indicator -->
-        <div class="flex justify-center gap-3 mb-8" id="stepDots">
-            <div class="step-dot"></div>
+        <!-- จุดบอกขั้นตอน -->
+        <div class="flex justify-center gap-3 mb-8">
+            <div class="step-dot active"></div>
             <div class="step-dot"></div>
             <div class="step-dot"></div>
             <div class="step-dot"></div>
             <div class="step-dot"></div>
         </div>
 
-        <div class="glass-panel p-6 rounded-[2rem] space-y-4">
-            <div class="space-y-2">
-                <label class="text-xs text-slate-400 ml-1">ข้อมูลพนักงาน</label>
-                <input id="sid" type="text" placeholder="รหัสพนักงาน (เช่น 660123)" class="w-full p-4 rounded-xl outline-none text-sm">
+        <div class="glass p-6 rounded-[2.5rem] space-y-4 shadow-xl">
+            <div class="grid grid-cols-1 gap-3">
+                <input id="sid" type="text" placeholder="รหัสพนักงาน (เช่น 1001)" class="w-full p-4 rounded-xl outline-none text-sm">
                 <input id="sname" type="text" placeholder="ชื่อ-นามสกุล" class="w-full p-4 rounded-xl outline-none text-sm">
-                <input id="sclass" type="text" placeholder="แผนก / ตำแหน่ง" class="w-full p-4 rounded-xl outline-none text-sm">
+                <input id="sdept" type="text" placeholder="แผนก / ตำแหน่ง" class="w-full p-4 rounded-xl outline-none text-sm">
             </div>
 
-            <button id="startBtn" onclick="startRegistration()" disabled class="w-full bg-indigo-600 disabled:bg-slate-700 p-4 rounded-xl font-bold flex items-center justify-center gap-2">
-                <i data-lucide="scan"></i>
-                เริ่มบันทึกใบหน้า 5 ทิศทาง
+            <button id="captureBtn" onclick="startCaptureProcess()" disabled class="w-full bg-slate-700 p-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all">
+                <i data-lucide="camera"></i>
+                บันทึกใบหน้า 5 ทิศทาง
             </button>
         </div>
 
-        <p id="msgText" class="text-center mt-6 text-sm text-slate-400"></p>
+        <p id="infoText" class="text-center mt-6 text-sm text-slate-400 min-h-[40px]"></p>
     </div>
 
     <script>
         lucide.createIcons();
-        
-        // ดึง URL จาก localStorage (ให้ตั้งค่าในหน้า Settings ก่อน)
-        const API_URL = localStorage.getItem("gasApiUrl");
+
         const video = document.getElementById('video');
-        let capturedProfiles = [];
+        const mainContent = document.getElementById('mainContent');
+        const loginOverlay = document.getElementById('loginOverlay');
+        const statusText = document.getElementById('statusText');
+        const statusIcon = document.getElementById('statusIcon');
+        const captureBtn = document.getElementById('captureBtn');
+        const infoText = document.getElementById('infoText');
+        
+        let faceDescriptors = [];
+        const API_URL = localStorage.getItem('gasApiUrl'); // ดึงค่าจาก Settings
 
         // 1. ตรวจสอบการ Login
-        function checkAdmin() {
-            const u = document.getElementById('admUser').value;
-            const p = document.getElementById('admPass').value;
-            if(u === "admin" && p !== "") { // แก้ไขรหัสผ่านตามต้องการ
-                document.getElementById('loginOverlay').style.display = 'none';
-                initAI();
+        function handleLogin() {
+            const user = document.getElementById('admUser').value;
+            const pass = document.getElementById('admPass').value;
+            
+            // ปรับชื่อผู้ใช้และรหัสผ่านตามความต้องการของคุณ
+            if(user === "admin" && pass === "1234") {
+                loginOverlay.classList.add('hidden');
+                mainContent.classList.remove('hidden');
+                setTimeout(() => mainContent.classList.add('opacity-100'), 100);
+                initSystem();
             } else {
-                alert("สิทธิ์ไม่ถูกต้อง");
+                alert("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
             }
         }
 
-        // 2. โหลด AI Models (แก้ไข Path ให้เสถียร)
-        async function initAI() {
-            const statusLabel = document.getElementById('statusLabel');
+        // 2. โหลด AI และเปิดกล้อง
+        async function initSystem() {
             try {
-                // ใช้โมเดลจาก GitHub แทน jsdelivr เพื่อเลี่ยง Error 404
-                const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
+                // ใช้โมเดลที่เสถียรกว่าจาก GitHub ของผู้พัฒนา face-api โดยตรง
+                const MODEL_URL = 'https://raw.githubusercontent.com/vladmandic/face-api/master/model';
                 
                 await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
                 await faceapi.nets.faceLandmarks68Net.loadFromUri(MODEL_URL);
                 await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
 
-                statusLabel.innerHTML = `<span class="text-emerald-400">✅ ระบบ AI พร้อมทำงาน</span>`;
-                statusLabel.classList.remove('text-rose-400');
+                statusText.innerText = "ระบบ AI พร้อมทำงาน";
+                statusText.className = "text-sm text-emerald-400 font-medium";
+                statusIcon.className = "hidden";
                 
                 startCamera();
-                document.getElementById('startBtn').disabled = false;
+                captureBtn.disabled = false;
+                captureBtn.className = "w-full bg-indigo-600 hover:bg-indigo-500 p-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all";
             } catch (err) {
                 console.error(err);
-                statusLabel.innerHTML = `<span class="text-rose-500">❌ โหลดโมเดลล้มเหลว: ${err.message}</span>`;
+                statusText.innerText = "โหลด AI ไม่สำเร็จ: " + err.message;
+                statusText.className = "text-sm text-rose-500 font-medium";
+                statusIcon.className = "text-rose-500";
             }
         }
 
-        function startCamera() {
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
-                .then(s => video.srcObject = s)
-                .catch(e => alert("เข้าถึงกล้องไม่ได้: " + e));
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+            } catch (err) {
+                alert("ไม่สามารถเปิดกล้องได้: " + err.message);
+            }
         }
 
-        // 3. เริ่มขั้นตอนบันทึก 5 มุม (สอดคล้องกับ code.gs)
-        async function startRegistration() {
+        // 3. ขั้นตอนบันทึก 5 ทิศทาง
+        async function startCaptureProcess() {
             const sid = document.getElementById('sid').value;
             const name = document.getElementById('sname').value;
-            const sclass = document.getElementById('sclass').value;
+            const dept = document.getElementById('sdept').value;
 
-            if(!sid || !name || !sclass) return alert("กรุณากรอกข้อมูลให้ครบ");
+            if(!sid || !name || !dept) return alert("กรุณากรอกข้อมูลให้ครบถ้วน");
             if(!API_URL) return alert("กรุณาตั้งค่า API URL ในหน้า Dashboard ก่อน");
 
-            const btn = document.getElementById('startBtn');
-            const dots = document.querySelectorAll('.step-dot');
-            const msg = document.getElementById('msgText');
+            captureBtn.disabled = true;
+            faceDescriptors = [];
             const steps = ["มองตรง", "หันซ้าย", "หันขวา", "เงยหน้า", "ก้มหน้า"];
-            
-            btn.disabled = true;
-            capturedProfiles = [];
+            const dots = document.querySelectorAll('.step-dot');
 
-            for(let i=0; i<steps.length; i++) {
-                msg.innerHTML = `<span class="text-indigo-400 font-bold">ขั้นตอนที่ ${i+1}: ${steps[i]}</span><br>กรุณาค้างไว้ 2 วินาที...`;
-                dots[i].classList.add('active');
+            for (let i = 0; i < steps.length; i++) {
+                // อัปเดตจุด Step
+                dots.forEach((d, idx) => d.className = `step-dot ${idx === i ? 'active' : ''}`);
+                infoText.innerHTML = `<span class="text-indigo-400 font-bold text-lg animate-pulse">ขั้นที่ ${i+1}: ${steps[i]}</span><br>กรุณานิ่งไว้ 2 วินาที...`;
 
                 await new Promise(r => setTimeout(r, 2000));
 
@@ -161,50 +174,48 @@
                     .withFaceLandmarks()
                     .withFaceDescriptor();
 
-                if(!detection) {
-                    alert(`ไม่พบใบหน้าขณะ "${steps[i]}" กรุณาลองใหม่`);
+                if (!detection) {
+                    alert(`ไม่พบใบหน้าขณะ ${steps[i]} กรุณาลองใหม่อีกครั้ง`);
                     location.reload();
                     return;
                 }
 
-                capturedProfiles.push(Array.from(detection.descriptor));
-                msg.innerHTML = `✅ บันทึกมุม ${steps[i]} สำเร็จ!`;
+                faceDescriptors.push(Array.from(detection.descriptor));
+                infoText.innerHTML = `<span class="text-emerald-400">✅ บันทึกมุม ${steps[i]} สำเร็จ</span>`;
             }
 
-            // 4. ส่งข้อมูลไปยัง Google Sheets (code.gs)
-            msg.innerHTML = `<span class="animate-pulse">กำลังส่งข้อมูลไปยังฐานข้อมูล...</span>`;
+            sendDataToGAS(sid, name, dept);
+        }
+
+        // 4. ส่งข้อมูลเข้า Google Sheets
+        async function sendDataToGAS(sid, name, dept) {
+            infoText.innerHTML = `<span class="text-indigo-400">กำลังบันทึกข้อมูลเข้าฐานข้อมูล...</span>`;
             
             const payload = {
                 action: "registerUser",
                 studentId: sid,
                 name: name,
-                studentClass: sclass,
-                faceDescriptor: capturedProfiles // ส่ง Array ของทั้ง 5 เวกเตอร์
+                studentClass: dept,
+                faceDescriptor: faceDescriptors // ส่งข้อมูลทั้ง 5 มุม
             };
 
             try {
-                // ใช้ no-cors เพราะเป็น GAS
+                // ใช้ fetch แบบ no-cors สำหรับ Google Apps Script
                 await fetch(API_URL, {
                     method: 'POST',
                     mode: 'no-cors',
                     cache: 'no-cache',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
 
-                msg.innerHTML = `<div class="p-4 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/30">
-                    🎉 ลงทะเบียนเรียบร้อยแล้ว!<br>พนักงานคนนี้สามารถใช้ใบหน้าสแกนเข้างานได้ทันที
+                infoText.innerHTML = `<div class="bg-emerald-500/20 text-emerald-400 p-4 rounded-2xl border border-emerald-500/30">
+                    🎉 ลงทะเบียนสำเร็จ!<br><span class="text-xs">พนักงานสแกนเข้างานได้ทันที</span>
                 </div>`;
                 
-                // ล้างค่า
-                document.getElementById('sid').value = "";
-                document.getElementById('sname').value = "";
-                document.getElementById('sclass').value = "";
-                setTimeout(() => location.reload(), 4000);
-
+                setTimeout(() => location.reload(), 3500);
             } catch (err) {
-                msg.innerHTML = `<span class="text-rose-500">❌ ส่งข้อมูลล้มเหลว: ${err.message}</span>`;
-                btn.disabled = false;
+                alert("เกิดข้อผิดพลาดในการส่งข้อมูล: " + err.message);
+                captureBtn.disabled = false;
             }
         }
     </script>
