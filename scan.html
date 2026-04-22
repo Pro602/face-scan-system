@@ -93,25 +93,23 @@ let locationsData = []
 let scanInterval = null
 let isProcessing = false
 
-// 🔥 กันรูป
-let challenge = ""
-let challengePassed = false
-let isDetecting = false   // 🔥 ตัวนี้สำคัญ
+// 🔥 state
 let faceCaptured = false
 let isLocked = false
-let alreadySent = false   // 🔥 ตัวนี้สำคัญสุด
-let movementBuffer = []
-let challengeStartTime = 0
-  let jitterHistory = []
-  let challengeList = []
-let currentStep = 0
-const MATCH_THRESHOLD = 0.4
+let alreadySent = false
+
+// 🔥 movement
+let movementHistory = []
+
+// 🔥 ปรับความแม่น
+const MATCH_THRESHOLD = 0.36
 
 // ================= AUDIO =================
 let audioReady = false
 
 function unlockAudio(){
   const audio = new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3")
+
   audio.play().then(()=>{
     audio.pause()
     audio.currentTime = 0
@@ -120,21 +118,31 @@ function unlockAudio(){
 }
 
 function playSound(type){
+
   if(!audioReady) return
 
   let url = ""
 
-  if(type==="IN") url="https://www.soundjay.com/buttons/sounds/button-3.mp3"
-  else if(type==="OUT") url="https://www.soundjay.com/buttons/sounds/button-4.mp3"
-  else url="https://www.soundjay.com/buttons/sounds/button-10.mp3"
+  if(type==="IN"){
+    url="https://www.soundjay.com/buttons/sounds/button-3.mp3"
+  }
+  else if(type==="OUT"){
+    url="https://www.soundjay.com/buttons/sounds/button-4.mp3"
+  }
+  else{
+    url="https://www.soundjay.com/buttons/sounds/button-10.mp3"
+  }
 
   new Audio(url).play()
 }
 
 function speak(text){
+
   if(!audioReady) return
+
   const msg = new SpeechSynthesisUtterance(text)
   msg.lang = "th-TH"
+
   speechSynthesis.speak(msg)
 }
 
@@ -143,181 +151,394 @@ window.onload = init
 
 async function init(){
 
-  const MODEL_URL="https://justadudewhohacks.github.io/face-api.js/models"
+  const MODEL_URL =
+    "https://justadudewhohacks.github.io/face-api.js/models"
 
   await Promise.all([
+
     faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+
     faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+
     faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+
   ])
 
   await loadFaceDatabase()
+
   await loadLocations()
 
-  status.innerText="พร้อมใช้งาน"
+  status.innerText = "พร้อมใช้งาน"
 }
 
 // ================= START =================
 function startAll(){
+
   unlockAudio()
-  generateChallenge()
+
   startCamera()
-}
-
-// ================= RANDOM ACTION =================
-function generateChallenge(){
-
-  const actions = ["LEFT","RIGHT","UP","DOWN"]
-
-  // 🔥 สุ่ม 2 ท่า
-  challengeList = [
-    actions[Math.floor(Math.random()*actions.length)],
-    actions[Math.floor(Math.random()*actions.length)]
-  ]
-
-  currentStep = 0
-  movementBuffer = []
-  challengeStartTime = Date.now()
-
-  showCurrentStep()
-}
-
-function showCurrentStep(){
-  const map = {
-    LEFT: "👉 หันซ้าย",
-    RIGHT: "👉 หันขวา",
-    UP: "👉 เงยหน้า",
-    DOWN: "👉 ก้มหน้า"
-  }
-
-  status.innerText = map[challengeList[currentStep]]
 }
 
 // ================= LOAD FACE =================
 async function loadFaceDatabase(){
-  const res = await fetch(API_URL+"?action=faces&t="+Date.now())
+
+  const res = await fetch(
+    API_URL + "?action=faces&t=" + Date.now()
+  )
+
   const data = await res.json()
 
   knownFaces = data.map(u => ({
+
     studentId: u.studentId,
+
     name: u.name,
+
     class: u.department,
-    descriptor: new Float32Array(u.descriptor) // ✅ ตัวเดียว
+
+    descriptor: new Float32Array(u.descriptor)
+
   }))
 }
 
 // ================= LOAD LOCATION =================
 async function loadLocations(){
-  const res = await fetch(API_URL+"?action=locations")
+
+  const res = await fetch(
+    API_URL + "?action=locations"
+  )
+
   const data = await res.json()
 
   locationsData = data
 
-  const select=document.getElementById("locationSelect")
+  const select =
+    document.getElementById("locationSelect")
 
   data.forEach(loc=>{
-    const opt=document.createElement("option")
-    opt.value=loc.name
-    opt.textContent=loc.name
+
+    const opt = document.createElement("option")
+
+    opt.value = loc.name
+
+    opt.textContent = loc.name
+
     select.appendChild(opt)
+
   })
 }
 
 // ================= CAMERA =================
 function startCamera(){
-  navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}})
-    .then(stream=>{
-      video.srcObject=stream
-      startScanLoop()
-    })
+
+  navigator.mediaDevices.getUserMedia({
+    video:{
+      facingMode:"user"
+    }
+  })
+
+  .then(stream=>{
+
+    video.srcObject = stream
+
+    startScanLoop()
+
+  })
+
+  .catch(err=>{
+
+    console.error(err)
+
+    alert("❌ เปิดกล้องไม่ได้")
+
+  })
 }
 
 // ================= SCAN =================
 function startScanLoop(){
 
-  if(scanInterval) clearInterval(scanInterval)
+  if(scanInterval){
+    clearInterval(scanInterval)
+  }
 
   scanInterval = setInterval(async()=>{
 
-    // 🔒 กันทุกสถานะ
-    if(isProcessing || faceCaptured || isLocked || alreadySent) return
+    if(
+      isProcessing ||
+      faceCaptured ||
+      isLocked ||
+      alreadySent
+    ){
+      return
+    }
 
     isLocked = true
 
     try{
 
-      status.innerText = "📸 กำลังสแกน..."
+      status.innerText =
+        "📸 กรุณาขยับหน้าเล็กน้อย"
 
       // =========================
-      // 🧠 LIVENESS
+      // 🔥 ตรวจจับใบหน้า
       // =========================
-      let descriptor = await captureSmartLiveness()
+      const det = await faceapi
+
+        .detectSingleFace(
+          video,
+          new faceapi.TinyFaceDetectorOptions()
+        )
+
+        .withFaceLandmarks()
+
+        .withFaceDescriptor()
+
+      // ❌ ไม่เจอหน้า
+      if(!det){
+        return
+      }
 
       // =========================
-      // 🔥 FALLBACK (เครื่องช้า / กล้องกาก)
+      // 🔥 กันรูปภาพ
       // =========================
+
+      // ความมั่นใจต่ำ
+      if(det.detection.score < 0.80){
+        return
+      }
+
+      // ต้องขยับจริง
+      if(!detectRealMovement(det.landmarks)){
+        return
+      }
+
+      // =========================
+      // 🔥 เก็บหลาย sample
+      // =========================
+      const descriptor =
+        await buildStableDescriptor()
+
       if(!descriptor){
-        console.log("fallback normal scan")
-
-        const det = await faceapi
-          .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
-          .withFaceLandmarks()
-          .withFaceDescriptor()
-
-        // ❌ ไม่เจอหน้า
-        if(!det) return
-
-        // 🔥 กันภาพเบื้องต้น (ความมั่นใจต่ำไม่เอา)
-        if(det.detection.score < 0.6) return
-
-        descriptor = det.descriptor
+        return
       }
 
       // =========================
       // 🎯 MATCH
       // =========================
-      const best = findBestMatch(descriptor)
+      const best =
+        findBestMatch(descriptor)
 
-      if(best && best.distance < MATCH_THRESHOLD){
+      if(
+        best &&
+        best.distance < MATCH_THRESHOLD
+      ){
 
-        // 🔥 กันพลาดซ้ำ
-        if(best.distance > 0.38) return
+        // 🔥 กันแมทผิดคน
+        const second =
+          findSecondBestMatch(
+            descriptor,
+            best.studentId
+          )
 
-        // 🔒 LOCK HARD
+        // ถ้าคะแนนใกล้กันเกินไป
+        if(
+          second &&
+          Math.abs(
+            second.distance -
+            best.distance
+          ) < 0.03
+        ){
+          console.log("ambiguous face")
+          return
+        }
+
         alreadySent = true
         faceCaptured = true
         isProcessing = true
 
         clearInterval(scanInterval)
 
-        // หน่วงนิดให้ภาพนิ่ง
-        setTimeout(async ()=>{
+        setTimeout(async()=>{
+
           await confirmAttendance(best)
-        }, 300)
+
+        },300)
 
         return
       }
 
     }catch(err){
+
       console.error(err)
 
-    } finally {
-      // 🔓 ปลดล็อกเสมอ (สำคัญมาก)
+    }finally{
+
       isLocked = false
+
     }
 
-  },350) // ⚡ เร็ว + ไม่หนักเครื่อง
+  },500)
 }
+
+// ================= BUILD DESCRIPTOR =================
+async function buildStableDescriptor(){
+
+  const samples = []
+
+  for(let i=0;i<5;i++){
+
+    const det = await faceapi
+
+      .detectSingleFace(
+        video,
+        new faceapi.TinyFaceDetectorOptions()
+      )
+
+      .withFaceLandmarks()
+
+      .withFaceDescriptor()
+
+    if(det){
+
+      samples.push(det.descriptor)
+
+    }
+
+    await new Promise(r=>setTimeout(r,80))
+  }
+
+  if(samples.length < 3){
+    return null
+  }
+
+  const avg =
+    new Float32Array(
+      samples[0].length
+    )
+
+  samples.forEach(d=>{
+
+    for(let i=0;i<d.length;i++){
+
+      avg[i] += d[i]
+
+    }
+
+  })
+
+  for(let i=0;i<avg.length;i++){
+
+    avg[i] /= samples.length
+
+  }
+
+  return avg
+}
+
+// ================= REAL MOVEMENT =================
+function detectRealMovement(landmarks){
+
+  const nose =
+    landmarks.getNose()[3]
+
+  movementHistory.push({
+    x:nose.x,
+    y:nose.y
+  })
+
+  if(movementHistory.length > 10){
+    movementHistory.shift()
+  }
+
+  if(movementHistory.length < 5){
+    return false
+  }
+
+  let move = 0
+
+  for(
+    let i=1;
+    i<movementHistory.length;
+    i++
+  ){
+
+    move += Math.abs(
+      movementHistory[i].x -
+      movementHistory[i-1].x
+    )
+
+    move += Math.abs(
+      movementHistory[i].y -
+      movementHistory[i-1].y
+    )
+  }
+
+  // 🔥 ต้องมี movement จริง
+  return move > 15
+}
+
 // ================= MATCH =================
 function findBestMatch(query){
+
   let best = null
 
   knownFaces.forEach(face=>{
-    const dist = faceapi.euclideanDistance(query, face.descriptor)
 
-    if(!best || dist < best.distance){
-      best = {...face, distance: dist}
+    const dist =
+      faceapi.euclideanDistance(
+        query,
+        face.descriptor
+      )
+
+    if(
+      !best ||
+      dist < best.distance
+    ){
+
+      best = {
+        ...face,
+        distance: dist
+      }
+
     }
+
+  })
+
+  return best
+}
+
+// ================= SECOND MATCH =================
+function findSecondBestMatch(
+  query,
+  excludeId
+){
+
+  let best = null
+
+  knownFaces.forEach(face=>{
+
+    if(face.studentId === excludeId){
+      return
+    }
+
+    const dist =
+      faceapi.euclideanDistance(
+        query,
+        face.descriptor
+      )
+
+    if(
+      !best ||
+      dist < best.distance
+    ){
+
+      best = {
+        ...face,
+        distance: dist
+      }
+
+    }
+
   })
 
   return best
@@ -325,351 +546,372 @@ function findBestMatch(query){
 
 // ================= GPS =================
 function getGPS(){
+
   return new Promise(resolve=>{
+
     navigator.geolocation.getCurrentPosition(
+
       pos=>resolve({
+
         lat:pos.coords.latitude,
+
         lng:pos.coords.longitude
+
       }),
-      ()=>resolve({lat:"",lng:""}),
-      {enableHighAccuracy:true,timeout:10000}
+
+      ()=>resolve({
+        lat:"",
+        lng:""
+      }),
+
+      {
+        enableHighAccuracy:true,
+        timeout:10000
+      }
+
     )
+
   })
 }
 
 // ================= DIST =================
-function getDistance(lat1, lon1, lat2, lon2){
-  const R = 6371e3
-  const toRad = x=>x*Math.PI/180
+function getDistance(
+  lat1,
+  lon1,
+  lat2,
+  lon2
+){
 
-  const dLat = toRad(lat2-lat1)
-  const dLon = toRad(lon2-lon1)
+  const R = 6371e3
+
+  const toRad =
+    x => x*Math.PI/180
+
+  const dLat =
+    toRad(lat2-lat1)
+
+  const dLon =
+    toRad(lon2-lon1)
 
   const a =
+
     Math.sin(dLat/2)**2 +
-    Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*
+
+    Math.cos(toRad(lat1)) *
+
+    Math.cos(toRad(lat2)) *
+
     Math.sin(dLon/2)**2
 
-  return R*(2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)))
+  return R * (
+    2 * Math.atan2(
+      Math.sqrt(a),
+      Math.sqrt(1-a)
+    )
+  )
 }
 
 // ================= CONFIRM =================
 async function confirmAttendance(user) {
 
-  const type = document.getElementById("typeSelect").value;
-  const locationName = document.getElementById("locationSelect").value;
+  const type =
+    document.getElementById(
+      "typeSelect"
+    ).value
+
+  const locationName =
+    document.getElementById(
+      "locationSelect"
+    ).value
 
   // ===============================
   // ❌ ไม่เลือกสถานที่
   // ===============================
   if (!locationName) {
-    alert("❌ กรุณาเลือกสถานที่");
 
-    isProcessing = false;
-    isLocked = false;
-    faceCaptured = false;
-    alreadySent = false;
+    alert("❌ กรุณาเลือกสถานที่")
 
-    startScanLoop();
-    return;
+    resetScanState()
+
+    startScanLoop()
+
+    return
   }
 
   // ===============================
   // 📍 GPS
   // ===============================
-  const gps = await getGPS();
+  const gps = await getGPS()
 
   if (!gps.lat) {
-    alert("❌ กรุณาเปิด GPS");
 
-    isProcessing = false;
-    isLocked = false;
-    faceCaptured = false;
-    alreadySent = false;
+    alert("❌ กรุณาเปิด GPS")
 
-    startScanLoop();
-    return;
+    resetScanState()
+
+    startScanLoop()
+
+    return
   }
 
-  const locationText = gps.lat + "," + gps.lng;
-  const loc = locationsData.find(l => l.name === locationName);
+  const locationText =
+    gps.lat + "," + gps.lng
+
+  const loc =
+    locationsData.find(
+      l => l.name === locationName
+    )
 
   // ===============================
-  // 📏 ตรวจระยะ (เหมือนเดิม 100%)
+  // 📏 ตรวจระยะ
   // ===============================
   if (loc) {
-    const dist = getDistance(gps.lat, gps.lng, loc.lat, loc.lng);
-    const radius = loc.radius || 300;
 
-    if (locationName !== "ทำงานนอกสถานที่" && dist > radius) {
-      playSound("ERROR");
-      speak("อยู่นอกพื้นที่");
+    const dist = getDistance(
 
-      alert("❌ คุณอยู่ห่างจาก " + locationName + " ประมาณ " + Math.round(dist) + " เมตร (จำกัดที่ " + radius + " เมตร)");
+      gps.lat,
+      gps.lng,
 
-      isProcessing = false;
-      isLocked = false;
-      faceCaptured = false;
-      alreadySent = false;
+      loc.lat,
+      loc.lng
 
-      startScanLoop();
-      return;
+    )
+
+    const radius =
+      loc.radius || 300
+
+    if (
+      locationName !==
+      "ทำงานนอกสถานที่" &&
+      dist > radius
+    ) {
+
+      playSound("ERROR")
+
+      speak("อยู่นอกพื้นที่")
+
+      alert(
+        "❌ คุณอยู่ห่างจาก " +
+        locationName +
+        " ประมาณ " +
+        Math.round(dist) +
+        " เมตร"
+      )
+
+      resetScanState()
+
+      startScanLoop()
+
+      return
     }
   }
 
   // ===============================
   // ❗ confirm
   // ===============================
-  if (!confirm(`ยืนยัน ${type}\n${user.name}`)) {
+  if (
+    !confirm(
+      `ยืนยัน ${type}\n${user.name}`
+    )
+  ){
 
-    isProcessing = false;
-    isLocked = false;
-    faceCaptured = false;
-    alreadySent = false;
+    resetScanState()
 
-    startScanLoop();
-    return;
+    startScanLoop()
+
+    return
   }
 
   // ===============================
-  // 📸 ถ่ายรูปก่อนปิดกล้อง
+  // 📸 capture image
   // ===============================
-  const imageBase64 = captureImage();
+  const imageBase64 =
+    captureImage()
 
-  // ปิดกล้องหลัง capture (กันภาพดำ)
-  if (video.srcObject) {
-    video.srcObject.getTracks().forEach(t => t.stop());
+  if(video.srcObject){
+
+    video.srcObject
+      .getTracks()
+      .forEach(t=>t.stop())
+
   }
 
-  status.innerText = "⏳ กำลังบันทึกข้อมูล...";
+  status.innerText =
+    "⏳ กำลังบันทึกข้อมูล..."
 
-  try {
+  try{
 
     // ===============================
-    // 🔵 1. บันทึกข้อมูล
+    // save attendance
     // ===============================
-    await fetch(API_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "attendance",
-        studentId: user.studentId,
-        name: user.name,
-        department: user.class,
-        type: type,
-        location: locationText,
-        locationName: locationName
+    await fetch(API_URL,{
+
+      method:"POST",
+
+      mode:"no-cors",
+
+      headers:{
+        "Content-Type":
+        "application/json"
+      },
+
+      body:JSON.stringify({
+
+        action:"attendance",
+
+        studentId:user.studentId,
+
+        name:user.name,
+
+        department:user.class,
+
+        type:type,
+
+        location:locationText,
+
+        locationName:locationName
+
       })
-    });
 
-    // ⏱ กันยิงซ้ำ
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    })
 
-    // ===============================
-    // 🟢 2. บันทึกรูป
-    // ===============================
-    status.innerText = "📸 กำลังบันทึกรูปภาพ...";
-
-    const params = new URLSearchParams();
-    params.append("action", "uploadImage");
-    params.append("studentId", user.studentId);
-    params.append("image", imageBase64);
-
-    await fetch(API_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: params.toString()
-    });
+    await new Promise(
+      r=>setTimeout(r,1000)
+    )
 
     // ===============================
-    // ✅ SUCCESS
+    // save image
     // ===============================
-    playSound(type);
+    const params =
+      new URLSearchParams()
+
+    params.append(
+      "action",
+      "uploadImage"
+    )
+
+    params.append(
+      "studentId",
+      user.studentId
+    )
+
+    params.append(
+      "image",
+      imageBase64
+    )
+
+    await fetch(API_URL,{
+
+      method:"POST",
+
+      mode:"no-cors",
+
+      headers:{
+        "Content-Type":
+        "application/x-www-form-urlencoded"
+      },
+
+      body:params.toString()
+
+    })
+
+    playSound(type)
 
     await Swal.fire({
-      title: 'บันทึกสำเร็จ',
-      text: 'บันทึกข้อมูลและรูปภาพเรียบร้อยแล้ว',
-      icon: 'success',
-      confirmButtonText: 'ตกลง',
-      confirmButtonColor: '#6366f1',
-      allowOutsideClick: false
-    });
 
-    // ===============================
-    // 🔓 RESET LOCK (สำคัญสุด)
-    // ===============================
-    isProcessing = false;
-    isLocked = false;
-    faceCaptured = false;
-    alreadySent = false;
+      title:"บันทึกสำเร็จ",
 
-    // ===============================
-    // 🔁 REDIRECT
-    // ===============================
-    if (window.opener) {
-      window.close();
-    } else {
-      window.location.href = "https://pro602.github.io/Scan/?v=1.1";
-    }
+      text:
+        "บันทึกข้อมูลและรูปภาพเรียบร้อยแล้ว",
 
-  } catch (err) {
-    console.error(err);
-    alert("❌ เกิดข้อผิดพลาดในการบันทึกภาพ");
+      icon:"success",
 
-    // ===============================
-    // 🔓 RESET ตอน ERROR
-    // ===============================
-    isProcessing = false;
-    isLocked = false;
-    faceCaptured = false;
-    alreadySent = false;
+      confirmButtonText:"ตกลง",
 
-    startScanLoop();
-  }
-}
-// ปรับให้ภาพเล็กลงที่สุดเพื่อความชัวร์ (120x90, คุณภาพ 0.1)
-function captureImage() {
-  const canvas = document.createElement("canvas");
-  canvas.width = 320; 
-  canvas.height = 240;  
-  const ctx = canvas.getContext("2d");
+      confirmButtonColor:"#6366f1",
 
-  ctx.translate(canvas.width, 0);
-  ctx.scale(-1, 1);
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      allowOutsideClick:false
 
-  return canvas.toDataURL("image/jpeg", 0.5); 
-}
+    })
 
-async function captureSmartLiveness(){
+    resetScanState()
 
-  const samples = []
-  let movementOK = false
+    if(window.opener){
 
-  for(let i=0;i<5;i++){
+      window.close()
 
-    // ⏱ timeout กันโกง
-    if(Date.now() - challengeStartTime > 2000){
-      console.log("timeout")
-      return null
-    }
+    }else{
 
-    const det = await faceapi
-      .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
-      .withFaceLandmarks()
-      .withFaceDescriptor()
-
-    if(det){
-
-      samples.push(det.descriptor)
-
-      if(checkHeadMovement(det.landmarks)){
-        movementOK = true
-      }
+      window.location.href =
+        "https://pro602.github.io/Scan/?v=1.1"
 
     }
 
-    await new Promise(r => setTimeout(r,100))
+  }catch(err){
+
+    console.error(err)
+
+    alert(
+      "❌ เกิดข้อผิดพลาด"
+    )
+
+    resetScanState()
+
+    startScanLoop()
+
   }
-
-  if(!movementOK) return null
-  if(samples.length === 0) return null
-
-  const avg = new Float32Array(samples[0].length)
-
-  samples.forEach(d=>{
-    for(let i=0;i<d.length;i++){
-      avg[i]+=d[i]
-    }
-  })
-
-  for(let i=0;i<avg.length;i++){
-    avg[i]/=samples.length
-  }
-
-  return avg
-}
-  function isBlinking(landmarks){
-  const leftEye = landmarks.getLeftEye()
-  const rightEye = landmarks.getRightEye()
-
-  function eyeAspectRatio(eye){
-    const A = Math.hypot(eye[1].x - eye[5].x, eye[1].y - eye[5].y)
-    const B = Math.hypot(eye[2].x - eye[4].x, eye[2].y - eye[4].y)
-    const C = Math.hypot(eye[0].x - eye[3].x, eye[0].y - eye[3].y)
-    return (A + B) / (2.0 * C)
-  }
-
-  const leftEAR = eyeAspectRatio(leftEye)
-  const rightEAR = eyeAspectRatio(rightEye)
-
-  const EAR = (leftEAR + rightEAR) / 2
-
-  // 🔥 ค่าต่ำ = หลับตา
-  return EAR < 0.20
 }
 
-function checkHeadMovement(landmarks){
+// ================= RESET =================
+function resetScanState(){
 
-  const nose = landmarks.getNose()[3]
-  movementBuffer.push({x:nose.x, y:nose.y})
+  isProcessing = false
 
-  if(movementBuffer.length < 5) return false
+  isLocked = false
 
-  const first = movementBuffer[0]
-  const last = movementBuffer[movementBuffer.length-1]
+  faceCaptured = false
 
-  const dx = last.x - first.x
-  const dy = last.y - first.y
+  alreadySent = false
 
-  const action = challengeList[currentStep]
-
-  let passed = false
-
-  switch(action){
-    case "LEFT": passed = dx < -15; break
-    case "RIGHT": passed = dx > 15; break
-    case "UP": passed = dy < -15; break
-    case "DOWN": passed = dy > 15; break
-  }
-
-  movementBuffer = []
-
-  if(passed){
-    currentStep++
-
-    // 🔥 ไป step ต่อไป
-    if(currentStep < challengeList.length){
-      showCurrentStep()
-      return false
-    }
-
-    // ✅ ผ่านครบ
-    return true
-  }
-
-  return false
+  movementHistory = []
 }
-  
-  function detectHumanJitter(){
 
-  if(movementBuffer.length < 5) return false
+// ================= IMAGE =================
+function captureImage(){
 
-  let jitter = 0
+  const canvas =
+    document.createElement(
+      "canvas"
+    )
 
-  for(let i=1;i<movementBuffer.length;i++){
-    const dx = movementBuffer[i].x - movementBuffer[i-1].x
-    const dy = movementBuffer[i].y - movementBuffer[i-1].y
+  canvas.width = 320
 
-    jitter += Math.abs(dx) + Math.abs(dy)
-  }
+  canvas.height = 240
 
-  // 🔥 ถ้าเคลื่อนเรียบเกินไป = รูป/จอ
-  return jitter > 8
+  const ctx =
+    canvas.getContext("2d")
+
+  ctx.translate(
+    canvas.width,
+    0
+  )
+
+  ctx.scale(-1,1)
+
+  ctx.drawImage(
+    video,
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  )
+
+  return canvas.toDataURL(
+    "image/jpeg",
+    0.5
+  )
 }
-  
+
 </script>
 
 </body>
