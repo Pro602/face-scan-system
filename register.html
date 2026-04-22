@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ลงทะเบียนใบหน้า - THAISIAM</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+    <!-- เปลี่ยนมาใช้ Library เวอร์ชันที่เสถียรกว่า -->
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
@@ -18,6 +19,7 @@
         .glass-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
         @keyframes flash { 0% { opacity: 0; } 50% { opacity: 1; } 100% { opacity: 0; } }
         .flash-active { animation: flash 0.3s ease-out; }
+        .modal-login { background: rgba(15, 23, 42, 0.95); }
     </style>
 </head>
 <body class="p-6 min-h-screen flex flex-col items-center">
@@ -30,33 +32,52 @@
             <h1 class="text-xl font-bold">ลงทะเบียนพนักงานใหม่</h1>
         </div>
 
-        <!-- 🔐 ADMIN LOGIN -->
-        <div id="loginBox" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/95 p-6">
-            <div class="glass-card w-full max-w-xs p-8 rounded-3xl space-y-4 text-center">
-                <i data-lucide="lock" class="mx-auto text-indigo-400 w-12 h-12"></i>
-                <h3 class="text-lg font-bold">สิทธิ์เฉพาะผู้ดูแล</h3>
-                <input id="loginUser" type="text" placeholder="ชื่อผู้ใช้" class="w-full bg-slate-800 rounded-xl p-3 outline-none">
-                <input id="loginPass" type="password" placeholder="รหัสผ่าน" class="w-full bg-slate-800 rounded-xl p-3 outline-none">
-                <button onclick="doLogin()" class="w-full bg-indigo-600 py-3 rounded-xl font-bold">เข้าสู่ระบบ</button>
+        <!-- 🔐 ADMIN LOGIN MODAL -->
+        <div id="loginBox" class="fixed inset-0 z-50 flex items-center justify-center modal-login p-6">
+            <div class="glass-card w-full max-w-xs p-8 rounded-3xl space-y-4 text-center border-indigo-500/30">
+                <div class="w-16 h-16 bg-indigo-500/20 rounded-2xl flex items-center justify-center mx-auto mb-2">
+                    <i data-lucide="lock" class="text-indigo-400 w-8 h-8"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white">สิทธิ์เฉพาะผู้ดูแล</h3>
+                <p class="text-slate-400 text-xs">กรุณาเข้าสู่ระบบเพื่อดำเนินการ</p>
+                <div class="space-y-3 pt-2">
+                    <input id="loginUser" type="text" placeholder="ชื่อผู้ใช้" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 outline-none focus:border-indigo-500 text-sm">
+                    <input id="loginPass" type="password" placeholder="รหัสผ่าน" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 outline-none focus:border-indigo-500 text-sm">
+                </div>
+                <button onclick="doLogin()" id="btnLogin" class="w-full bg-indigo-600 hover:bg-indigo-500 py-3 rounded-xl font-bold transition-all mt-2">เข้าสู่ระบบ</button>
             </div>
         </div>
 
         <div class="space-y-4 text-center">
-            <div id="status" class="text-indigo-400 font-medium h-6 text-sm">กำลังเตรียมระบบ AI...</div>
-            <div class="camera-container">
+            <div id="status" class="text-indigo-400 font-medium h-6 text-sm flex items-center justify-center gap-2">
+                <span class="inline-block w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></span>
+                กำลังเตรียมระบบ AI...
+            </div>
+            <div class="camera-container shadow-2xl">
                 <video id="video" autoplay muted playsinline></video>
-                <div id="capture-overlay" class="absolute inset-0 border-[12px] border-emerald-500 opacity-0 pointer-events-none"></div>
+                <div id="capture-overlay" class="absolute inset-0 border-[12px] border-emerald-500 opacity-0 pointer-events-none transition-opacity duration-300"></div>
             </div>
             <div class="flex justify-center gap-2" id="step-dots">
                 <div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
             </div>
         </div>
 
-        <div class="glass-card p-6 rounded-3xl space-y-4">
-            <input id="studentId" type="text" placeholder="รหัสพนักงาน" class="w-full bg-slate-900 rounded-xl p-4 outline-none">
-            <input id="username" type="text" placeholder="ชื่อ-นามสกุล" class="w-full bg-slate-900 rounded-xl p-4 outline-none">
-            <input id="userDept" type="text" placeholder="แผนก" class="w-full bg-slate-900 rounded-xl p-4 outline-none">
-            <button id="btnSave" disabled onclick="startScanningSequence()" class="w-full bg-indigo-600 py-4 rounded-2xl font-bold disabled:opacity-30">
+        <div class="glass-card p-6 rounded-[2rem] space-y-4 shadow-xl border-white/5">
+            <div class="space-y-3">
+                <div class="relative">
+                    <i data-lucide="user-check" class="absolute left-4 top-4 w-4 h-4 text-slate-500"></i>
+                    <input id="studentId" type="text" placeholder="รหัสพนักงาน" class="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 pl-12 outline-none focus:border-indigo-500">
+                </div>
+                <div class="relative">
+                    <i data-lucide="info" class="absolute left-4 top-4 w-4 h-4 text-slate-500"></i>
+                    <input id="username" type="text" placeholder="ชื่อ-นามสกุล" class="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 pl-12 outline-none focus:border-indigo-500">
+                </div>
+                <div class="relative">
+                    <i data-lucide="building" class="absolute left-4 top-4 w-4 h-4 text-slate-500"></i>
+                    <input id="userDept" type="text" placeholder="แผนก" class="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 pl-12 outline-none focus:border-indigo-500">
+                </div>
+            </div>
+            <button id="btnSave" disabled onclick="startScanningSequence()" class="w-full bg-indigo-600 py-4 rounded-2xl font-bold disabled:opacity-30 shadow-lg shadow-indigo-500/20 active:scale-95 transition-all">
                 📸 เริ่มบันทึกใบหน้า 5 มุมมอง
             </button>
         </div>
@@ -65,14 +86,8 @@
     <script>
         lucide.createIcons();
 
-        // ================= CONFIG & API CHECK =================
-        // ดึง API URL จาก localStorage หรือไฟล์ api-config.js (ถ้ามี)
-        const API_URL = localStorage.getItem("gasApiUrl") || (typeof GAS_API_URL !== "undefined" ? GAS_API_URL : "");
-
-        if(!API_URL && window.location.hostname !== 'script.google.com') {
-            alert("❌ ไม่พบการตั้งค่า API URL กรุณาตั้งค่าที่หน้าหลักก่อน");
-        }
-
+        // ดึง API URL จาก localStorage
+        const API_URL = localStorage.getItem("gasApiUrl") || "";
         const video = document.getElementById("video");
         const statusDiv = document.getElementById("status");
         const btnSave = document.getElementById("btnSave");
@@ -80,21 +95,30 @@
         let descriptors = [];
 
         window.onload = () => {
+            // ตรวจสอบการ Login
             if (sessionStorage.getItem("isAdmin") === "true") {
                 document.getElementById("loginBox").style.display = "none";
             }
             initAI();
         };
 
-        // ฟังก์ชันช่วยส่งข้อมูล (รองรับทั้ง Fetch บน GitHub และ google.script.run บน GAS)
+        // ฟังก์ชันช่วยส่งข้อมูล (แก้บั๊ก Uncaught ReferenceError: google is not defined)
         async function sendToGAS(payload) {
-            if (window.location.hostname === 'script.google.com') {
-                // ถ้ารันบน GAS โดยตรง
+            // เช็คว่าอยู่ใน Google Script Environment หรือไม่
+            const isGAS = typeof google !== 'undefined' && google.script && google.script.run;
+            
+            if (isGAS) {
                 return new Promise((resolve) => {
-                    google.script.run.withSuccessHandler(resolve)[payload.action](payload);
+                    google.script.run
+                        .withSuccessHandler(resolve)
+                        .withFailureHandler(err => resolve({ success: false, message: err.message }))
+                        [payload.action](payload);
                 });
             } else {
-                // ถ้ารันบน GitHub/Netlify
+                // รันบน GitHub
+                if (!API_URL) {
+                    return { success: false, message: "ยังไม่ได้ตั้งค่า API URL ในหน้าตั้งค่า" };
+                }
                 try {
                     const response = await fetch(API_URL, {
                         method: 'POST',
@@ -103,7 +127,7 @@
                     return await response.json();
                 } catch (e) {
                     console.error(e);
-                    return { success: false, message: "เชื่อมต่อ Server ไม่สำเร็จ" };
+                    return { success: false, message: "เชื่อมต่อ Server ไม่สำเร็จ (เช็คอินเทอร์เน็ต/URL)" };
                 }
             }
         }
@@ -111,59 +135,81 @@
         async function doLogin() {
             const user = document.getElementById("loginUser").value;
             const pass = document.getElementById("loginPass").value;
+            const btn = document.getElementById("btnLogin");
+
+            if(!user || !pass) return alert("กรุณากรอกข้อมูลให้ครบ");
             
-            statusDiv.innerText = "กำลังตรวจสอบสิทธิ์...";
-            const res = await sendToGAS({ action: 'login', user, pass });
+            btn.innerText = "⏳ กำลังเข้าสู่ระบบ...";
+            btn.disabled = true;
+
+            const res = await sendToGAS({ action: 'login', user: user, pass: pass });
             
-            if (res.success) {
+            if (res && res.success) {
                 sessionStorage.setItem("isAdmin", "true");
-                document.getElementById("loginBox").style.display = "none";
-                statusDiv.innerText = "พร้อมลงทะเบียน";
+                document.getElementById("loginBox").classList.add('opacity-0');
+                setTimeout(() => document.getElementById("loginBox").style.display = "none", 300);
             } else {
                 alert("❌ " + (res.message || "รหัสผ่านไม่ถูกต้อง"));
+                btn.innerText = "เข้าสู่ระบบ";
+                btn.disabled = false;
             }
         }
 
         async function initAI() {
             try {
-                const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model";
-                await Promise.all([
-                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-                    faceapi.nets.faceLandmarks68Net.loadFromUri(MODEL_URL),
-                    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-                ]);
-                statusDiv.innerText = "AI พร้อมแล้ว";
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+                // เปลี่ยนไปใช้โมเดลจาก CDN ที่เสถียรกว่า
+                const MODEL_URL = "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/models";
+                
+                statusDiv.innerHTML = `<span class="inline-block w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></span> กำลังโหลด AI...`;
+                
+                await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+                await faceapi.nets.faceLandmarks68Net.loadFromUri(MODEL_URL);
+                await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+
+                statusDiv.innerText = "✅ AI พร้อมทำงาน";
+                
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "user", width: 400, height: 400 } 
+                });
                 video.srcObject = stream;
                 btnSave.disabled = false;
             } catch (e) {
-                statusDiv.innerText = "❌ โหลด AI ไม่สำเร็จ";
+                console.error(e);
+                statusDiv.innerHTML = `<span class="text-rose-500">❌ โหลด AI ไม่สำเร็จ (${e.message})</span>`;
             }
         }
 
         async function startScanningSequence() {
             const sid = document.getElementById("studentId").value;
             const name = document.getElementById("username").value;
-            if(!sid || !name) return alert("กรอกข้อมูลให้ครบ");
+            if(!sid || !name) return alert("กรุณากรอกรหัสและชื่อพนักงาน");
 
             btnSave.disabled = true;
             descriptors = [];
             const steps = ["มองตรง", "หันซ้าย", "หันขวา", "เงยหน้า", "ก้มหน้า"];
 
             for (let i = 0; i < 5; i++) {
-                dots.forEach((d, idx) => d.classList.toggle("active", idx === i));
-                statusDiv.innerText = `ขั้นตอนที่ ${i+1}: ${steps[i]}`;
-                await new Promise(r => setTimeout(r, 2000));
+                dots.forEach((d, idx) => {
+                    d.classList.toggle("active", idx === i);
+                });
+                
+                statusDiv.innerHTML = `<span class="text-indigo-400 font-bold">ขั้นตอนที่ ${i+1}:</span> ${steps[i]}`;
+                await new Promise(r => setTimeout(r, 1500));
 
-                const detect = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+                // ใช้ TinyFaceDetectorOptions เพื่อประหยัดทรัพยากร
+                const detect = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks()
+                    .withFaceDescriptor();
                 
                 if (detect) {
                     descriptors.push(Array.from(detect.descriptor));
                     flashEffect();
+                    dots[i].classList.remove("active");
                     dots[i].classList.add("done");
                 } else {
-                    statusDiv.innerText = "❌ ไม่พบใบหน้า ลองใหม่...";
-                    i--;
+                    statusDiv.innerHTML = `<span class="text-rose-400">❌ ไม่พบใบหน้า กรุณา${steps[i]}</span>`;
+                    i--; // ทำขั้นตอนเดิมซ้ำ
+                    await new Promise(r => setTimeout(r, 1000));
                 }
             }
             saveData(sid, name);
@@ -171,14 +217,15 @@
 
         function flashEffect() {
             const overlay = document.getElementById('capture-overlay');
-            overlay.classList.add('flash-active');
-            setTimeout(() => overlay.classList.remove('flash-active'), 300);
+            overlay.style.opacity = "1";
+            setTimeout(() => overlay.style.opacity = "0", 300);
         }
 
         async function saveData(sid, name) {
-            statusDiv.innerText = "⏳ กำลังบันทึกข้อมูล...";
-            const dept = document.getElementById("userDept").value;
+            statusDiv.innerHTML = `<span class="animate-bounce">⏳</span> กำลังส่งข้อมูลไปยัง Google Sheet...`;
+            const dept = document.getElementById("userDept").value || "ทั่วไป";
             
+            // ถ่ายภาพสุดท้ายไว้ทำโปรไฟล์
             const canvas = document.createElement('canvas');
             canvas.width = 400; canvas.height = 400;
             const ctx = canvas.getContext('2d');
@@ -190,18 +237,19 @@
                 id: sid,
                 name: name,
                 department: dept,
-                image: canvas.toDataURL('image/jpeg', 0.7),
+                image: canvas.toDataURL('image/jpeg', 0.6),
                 descriptors: descriptors
             };
 
             const res = await sendToGAS(payload);
 
-            if (res.success) {
-                statusDiv.innerText = "✅ ลงทะเบียนสำเร็จ!";
-                setTimeout(() => location.reload(), 2000);
+            if (res && res.success) {
+                statusDiv.innerHTML = `<span class="text-emerald-400 font-bold text-lg">✅ ลงทะเบียนพนักงานสำเร็จ!</span>`;
+                setTimeout(() => window.location.href = "index.html", 2500);
             } else {
-                alert("ล้มเหลว: " + res.message);
+                alert("❌ บันทึกล้มเหลว: " + (res ? res.message : "เชื่อมต่อ Server ไม่สำเร็จ"));
                 btnSave.disabled = false;
+                statusDiv.innerText = "กรุณาลองใหม่อีกครั้ง";
             }
         }
     </script>
