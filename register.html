@@ -184,85 +184,129 @@ function startCamera(){
   })
 }
 
-  function averageDescriptors(descs){
-  const avg = new Array(descs[0].length).fill(0)
+  async function captureAverageDescriptor(){
 
-  descs.forEach(d=>{
+  const descriptors = []
+
+  for(let i=0;i<10;i++){
+
+    statusDiv.innerText =
+      "📸 กำลังเก็บข้อมูลใบหน้า... " + (i+1) + "/10"
+
+    const det = await faceapi
+      .detectSingleFace(
+        video,
+        new faceapi.TinyFaceDetectorOptions()
+      )
+      .withFaceLandmarks()
+      .withFaceDescriptor()
+
+    if(det){
+
+      // กันภาพไม่ชัด
+      if(det.detection.score < 0.8){
+        continue
+      }
+
+      // กันหน้าไกลเกิน
+      if(det.detection.box.width < 120){
+        continue
+      }
+
+      descriptors.push(det.descriptor)
+    }
+
+    await new Promise(r=>setTimeout(r,100))
+  }
+
+  if(descriptors.length < 5){
+    return null
+  }
+
+  // average descriptor
+  const avg = new Float32Array(descriptors[0].length)
+
+  descriptors.forEach(d=>{
+
     for(let i=0;i<d.length;i++){
       avg[i]+=d[i]
     }
+
   })
 
   for(let i=0;i<avg.length;i++){
-    avg[i]/=descs.length
+    avg[i]/=descriptors.length
   }
 
-  return avg
+  return Array.from(avg)
 }
 // ================= SAVE FACE =================
 
 async function saveFace(){
 
-  const studentId = document.getElementById("studentId").value.trim()
-  const name = document.getElementById("username").value.trim()
-  const userClass = document.getElementById("userClass").value.trim()
+  const studentId =
+    document.getElementById("studentId").value.trim()
+
+  const name =
+    document.getElementById("username").value.trim()
+
+  const userClass =
+    document.getElementById("userClass").value.trim()
 
   if(!studentId || !name || !userClass){
     alert("กรอกข้อมูลให้ครบ")
     return
   }
 
-  descriptors = []
+  statusDiv.innerText =
+    "📸 กรุณามองกล้องนิ่ง ๆ 2 วินาที"
 
-  const steps = [
-    "มองตรง",
-    "หันซ้าย",
-    "หันขวา",
-    "เงยหน้า",
-    "ก้มหน้า"
-  ]
+  const finalDescriptor =
+    await captureAverageDescriptor()
 
-  for(let i=0;i<steps.length;i++){
+  if(!finalDescriptor){
 
-    statusDiv.innerText = "👉 " + steps[i]
+    alert(
+      "❌ ตรวจจับใบหน้าไม่ได้\nกรุณาอยู่ในที่สว่าง"
+    )
 
-    await new Promise(r => setTimeout(r, 2000))
-
-    const detection = await faceapi
-      .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
-      .withFaceLandmarks()
-      .withFaceDescriptor()
-
-    if(!detection){
-      alert("❌ ไม่พบใบหน้า ("+steps[i]+")")
-      return
-    }
-
-    descriptors.push(Array.from(detection.descriptor))
+    return
   }
 
   try{
 
-    // 🔥 รวม 5 มุม → 1 descriptor
-    const finalDescriptor = averageDescriptors(descriptors)
-
     await fetch(API_URL,{
       method:"POST",
       mode:"no-cors",
-      headers:{ "Content-Type":"application/json" },
+      headers:{
+        "Content-Type":"application/json"
+      },
       body:JSON.stringify({
+
         action:"registerUser",
+
         studentId:studentId,
         name:name,
         studentClass:userClass,
-        faceDescriptor: finalDescriptor   // ✅ เปลี่ยนตรงนี้
+
+        faceDescriptor: finalDescriptor
+
       })
     })
 
-    msgDiv.innerText="✅ ลงทะเบียนสำเร็จ (5 มุม)"
+    msgDiv.innerText =
+      "✅ ลงทะเบียนสำเร็จ"
+
+    statusDiv.innerText =
+      "✅ บันทึกใบหน้าเรียบร้อย"
 
   }catch(e){
-    msgDiv.innerText="❌ error"
+
+    console.error(e)
+
+    msgDiv.innerText =
+      "❌ error"
+
   }
 }
 </script>
