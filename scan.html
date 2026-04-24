@@ -86,15 +86,59 @@ select{
 <script>
 
 // ================= CONFIG =================
+// ================= CONFIG =================
 const API_URL = localStorage.getItem('gasApiUrl') || GAS_API_URL
 
 const video = document.getElementById("video")
 const status = document.getElementById("status")
 
+// ================= AUDIO =================
+let audioReady = false
+
+function unlockAudio(){
+  const audio = new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3")
+
+  audio.play().then(()=>{
+    audio.pause()
+    audio.currentTime = 0
+    audioReady = true
+  }).catch(()=>{})
+}
+
+function playSound(type){
+
+  if(!audioReady) return
+
+  let url = ""
+
+  if(type==="IN"){
+    url="https://www.soundjay.com/buttons/sounds/button-3.mp3"
+  }
+  else if(type==="OUT"){
+    url="https://www.soundjay.com/buttons/sounds/button-4.mp3"
+  }
+  else{
+    url="https://www.soundjay.com/buttons/sounds/button-10.mp3"
+  }
+
+  new Audio(url).play()
+}
+
+function speak(text){
+
+  if(!audioReady) return
+
+  const msg = new SpeechSynthesisUtterance(text)
+  msg.lang = "th-TH"
+
+  speechSynthesis.speak(msg)
+}
+
 let knownFaces = []
 let locationsData = []
 let scanInterval = null
 let isProcessing = false
+let capturedImage = null
 
 // 🔥 adaptive speed
 const SCAN_DELAY = /iPhone|iPad|iPod/.test(navigator.userAgent) ? 320 : 240
@@ -126,6 +170,7 @@ async function init(){
 
 // ================= START =================
 function startAll(){
+  unlockAudio()   // 🔥 เพิ่มบรรทัดนี้
   startCamera()
 }
 
@@ -221,10 +266,18 @@ function startScanLoop(){
 
       if(best && best.distance < MATCH_THRESHOLD){
 
-        isProcessing = true
-        clearInterval(scanInterval)
+// 🔥 จับภาพทันทีตอนสแกนผ่าน
+capturedImage = captureImage()
 
-        await confirmAttendance(best)
+isProcessing = true
+clearInterval(scanInterval)
+
+// เว้นจังหวะให้เหมือนระบบเดิม
+setTimeout(async()=>{
+  await confirmAttendance(best)
+},300)
+
+return
       }
 
     }catch(e){
@@ -293,76 +346,128 @@ async function confirmAttendance(user){
   const type = document.getElementById("typeSelect").value
   const locationName = document.getElementById("locationSelect").value
 
-  if(!locationName){
+  // ❌ ไม่เลือกสถานที่
+  if (!locationName) {
     alert("❌ กรุณาเลือกสถานที่")
     resetScan()
     return
   }
 
+  // 📍 GPS (เพิ่ม delay ให้เหมือนเดิม)
+  await new Promise(r=>setTimeout(r,500))
+
   const gps = await getGPS()
 
-  if(!gps.lat){
-    alert("❌ เปิด GPS")
+  if (!gps.lat) {
+    alert("❌ กรุณาเปิด GPS")
     resetScan()
     return
   }
 
-  const loc = locationsData.find(l=>l.name===locationName)
+  const locationText = gps.lat + "," + gps.lng
 
-  if(loc){
-    const dist = getDistance(gps.lat,gps.lng,loc.lat,loc.lng)
-    if(dist > (loc.radius||300)){
-      alert("❌ อยู่นอกพื้นที่")
+  const loc = locationsData.find(l => l.name === locationName)
+
+  // 📏 ตรวจระยะ (เหมือนของเดิมคุณ)
+  if (loc) {
+
+    const dist = getDistance(
+      gps.lat, gps.lng,
+      loc.lat, loc.lng
+    )
+
+    const radius = loc.radius || 300
+
+    if (
+      locationName !== "ทำงานนอกสถานที่" &&
+      dist > radius
+    ) {
+
+      // 🔥 ของเดิมคุณ (สำคัญ)
+      playSound && playSound("ERROR")
+      speak && speak("อยู่นอกพื้นที่")
+
+      alert(
+        "❌ คุณอยู่ห่างจาก " +
+        locationName +
+        " ประมาณ " +
+        Math.round(dist) +
+        " เมตร"
+      )
+
       resetScan()
       return
     }
   }
 
-  if(!confirm(`ยืนยัน ${type}\n${user.name}`)){
+  // ❗ confirm (เหมือนเดิม)
+  if (!confirm(`ยืนยัน ${type}\n${user.name}`)){
+    resetScan()
+    return
+  }
+  // 🔥 หยุดกล้อง (สำคัญมาก)
+if(video.srcObject){
+  video.srcObject.getTracks().forEach(t=>t.stop())
+}
+
+  // 🔥 ใช้ภาพที่ capture ตอนสแกน (แก้ bug ภาพผิด)
+  if(!capturedImage){
+    alert("❌ ไม่สามารถจับภาพได้")
     resetScan()
     return
   }
 
-  const imageBase64 = captureImage()
+  const imageBase64 = capturedImage
 
-  status.innerText="⏳ กำลังบันทึก..."
+  status.innerText="⏳ กำลังบันทึกข้อมูล..."
 
-  await fetch(API_URL,{
-    method:"POST",
-    mode:"no-cors",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({
-      action:"attendance",
-      studentId:user.studentId,
-      name:user.name,
-      department:user.class,
-      type:type,
-      location:gps.lat+","+gps.lng,
-      locationName:locationName
+  try{
+
+    // save attendance
+    await fetch(API_URL,{
+      method:"POST",
+      mode:"no-cors",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify({
+        action:"attendance",
+        studentId:user.studentId,
+        name:user.name,
+        department:user.class,
+        type:type,
+        location:locationText,
+        locationName:locationName
+      })
     })
-  })
 
-  const params = new URLSearchParams()
-  params.append("action","uploadImage")
-  params.append("studentId",user.studentId)
-  params.append("image",imageBase64)
+    // save image
+    const params = new URLSearchParams()
+    params.append("action","uploadImage")
+    params.append("studentId",user.studentId)
+    params.append("image",imageBase64)
 
-  await fetch(API_URL,{
-    method:"POST",
-    mode:"no-cors",
-    headers:{ "Content-Type":"application/x-www-form-urlencoded" },
-    body:params.toString()
-  })
+    await fetch(API_URL,{
+      method:"POST",
+      mode:"no-cors",
+      headers:{ "Content-Type":"application/x-www-form-urlencoded" },
+      body:params.toString()
+    })
 
-  alert("✅ บันทึกสำเร็จ")
+    alert("✅ บันทึกสำเร็จ")
 
-  location.reload()
+    location.reload()
+
+  }catch(err){
+    console.error(err)
+    alert("❌ เกิดข้อผิดพลาด")
+    resetScan()
+  }
 }
 
 // ================= RESET =================
 function resetScan(){
   isProcessing = false
   movementHistory = []
+  capturedImage = null   // 🔥 เพิ่มบรรทัดนี้
   startScanLoop()
 }
 
