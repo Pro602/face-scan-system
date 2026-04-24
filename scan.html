@@ -262,7 +262,8 @@ function startScanLoop(){
           video,
           new faceapi.TinyFaceDetectorOptions({
             inputSize:160,
-            scoreThreshold:0.5
+            scoreThreshold:0.4
+            if(det.detection.score < 0.5) return
           })
         )
         .withFaceLandmarks()
@@ -272,7 +273,7 @@ function startScanLoop(){
 
       const box = det.detection.box
 
-      if(box.width < 90 || box.width > 300) return
+      if(box.width < 70 || box.width > 350) return
       if(det.detection.score < 0.6) return
 
       if(!detectMovement(det.landmarks)) return
@@ -327,7 +328,7 @@ function detectMovement(landmarks){
     move += Math.abs(movementHistory[i].y - movementHistory[i-1].y)
   }
 
-  return move > 1.5
+  return move > 0.8
 }
 
 // ================= MATCH =================
