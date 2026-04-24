@@ -280,7 +280,6 @@ function startScanLoop(){
       const best = findBestMatch(det.descriptor)
 
       if(best && best.distance < MATCH_THRESHOLD){
-      playSound("IN")   // 🔊 feedback ตอนสแกนติด
       if(alreadyConfirmed) return   // 🔥 กันซ้ำ
 
       alreadyConfirmed = true       // 🔥 ล็อกทันที
@@ -293,7 +292,7 @@ clearInterval(scanInterval)
 
 // เว้นจังหวะให้เหมือนระบบเดิม
 setTimeout(async()=>{
-  setTimeout(...)
+  await confirmAttendance(best)
 },300)
 
 return
@@ -370,6 +369,7 @@ async function confirmAttendance(user){
   // ❌ ไม่เลือกสถานที่
   if (!locationName) {
     alert("❌ กรุณาเลือกสถานที่")
+    confirmLock = false   // 🔥 ต้องมี
     resetScan()
     return
   }
@@ -381,6 +381,7 @@ async function confirmAttendance(user){
 
   if (!gps.lat) {
     alert("❌ กรุณาเปิด GPS")
+    confirmLock = false   // 🔥 ต้องมี
     resetScan()
     return
   }
@@ -423,6 +424,7 @@ speak("คุณอยู่นอกพื้นที่")
 
   // ❗ confirm (เหมือนเดิม)
   if (!confirm(`ยืนยัน ${type}\n${user.name}`)){
+    confirmLock = false   // 🔥 ต้องมี
     resetScan()
     return
   }
