@@ -423,19 +423,29 @@ speak("คุณอยู่นอกพื้นที่")
     }
   }
 
-  // ❗ confirm (เหมือนเดิม)
-  if (!confirm(`ยืนยัน ${type}\n${user.name}`)){
-    confirmLock = false   // 🔥 ต้องมี
-    resetScan()
-    return
-  }
-      // 🔊 เพิ่มตรงนี้
+ // ❗ confirm (ใช้ SweetAlert แทน)
+const result = await Swal.fire({
+  title: `ยืนยัน ${type}`,
+  text: user.name,
+  icon: "question",
+  showCancelButton: true,
+  confirmButtonText: "ยืนยัน",
+  cancelButtonText: "ยกเลิก"
+})
+
+if (!result.isConfirmed){
+  confirmLock = false   // 🔥 ต้องมี
+  resetScan()
+  return
+}
+
+// 🔊 เล่นเสียงหลังกดยืนยัน (ตรงนี้จะดังแน่นอน)
 playSound(type)
-setTimeout(()=>{
-  if(video.srcObject){
-    video.srcObject.getTracks().forEach(t=>t.stop())
-  }
-}, 100)
+
+// 🔥 หยุดกล้อง
+if(video.srcObject){
+  video.srcObject.getTracks().forEach(t=>t.stop())
+}
 
   // 🔥 ใช้ภาพที่ capture ตอนสแกน (แก้ bug ภาพผิด)
   if(!capturedImage){
