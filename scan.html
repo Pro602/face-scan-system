@@ -151,6 +151,7 @@ let scanInterval = null
 let isProcessing = false
 let capturedImage = null
 let needRestart = false   // 🔥 ตัวนี้สำคัญ
+let alreadyConfirmed = false
 
 // 🔥 adaptive speed
 const SCAN_DELAY = /iPhone|iPad|iPod/.test(navigator.userAgent) ? 320 : 240
@@ -279,7 +280,10 @@ function startScanLoop(){
       const best = findBestMatch(det.descriptor)
 
       if(best && best.distance < MATCH_THRESHOLD){
+        
+  if(alreadyConfirmed) return   // 🔥 กันซ้ำเด็ดขาด
 
+  alreadyConfirmed = true       // 🔥 ล็อกทันที
 // 🔥 จับภาพทันทีตอนสแกนผ่าน
 capturedImage = captureImage()
 
@@ -357,6 +361,9 @@ function getGPS(){
 // ================= CONFIRM =================
 async function confirmAttendance(user){
 
+  if(alreadyConfirmed){
+    return
+  }
   const type = document.getElementById("typeSelect").value
   const locationName = document.getElementById("locationSelect").value
 
@@ -398,8 +405,8 @@ async function confirmAttendance(user){
     ) {
 
       // 🔥 ของเดิมคุณ (สำคัญ)
-      playSound && playSound("ERROR")
-      speak && speak("อยู่นอกพื้นที่")
+playSound("ERROR")
+speak("คุณอยู่นอกพื้นที่")
 
       alert(
         "❌ คุณอยู่ห่างจาก " +
@@ -415,10 +422,13 @@ async function confirmAttendance(user){
   }
 
   // ❗ confirm (เหมือนเดิม)
-  if (!confirm(`ยืนยัน ${type}\n${user.name}`)){
-    resetScan()
-    return
-  }
+if (!confirm(`ยืนยัน ${type}\n${user.name}`)){
+  resetScan()
+  return
+}
+
+// 🔥 สำคัญมาก
+alreadyConfirmed = true
   // 🔥 หยุดกล้อง (สำคัญมาก)
 if(video.srcObject){
   video.srcObject.getTracks().forEach(t=>t.stop())
@@ -465,6 +475,8 @@ if(video.srcObject){
       headers:{ "Content-Type":"application/x-www-form-urlencoded" },
       body:params.toString()
     })
+    // 🔊 เล่นเสียงหลังบันทึกสำเร็จ
+playSound(type)
 
     alert("✅ บันทึกสำเร็จ")
 
@@ -484,11 +496,17 @@ function resetScan(){
   movementHistory = []
   capturedImage = null
 
-  needRestart = true   // 🔥 บังคับให้หยุด
+  alreadyConfirmed = false   // 🔥 สำคัญมาก
+  needRestart = true
 
   if(scanInterval){
     clearInterval(scanInterval)
     scanInterval = null
+  }
+
+  // 🔥 หยุดกล้องด้วย (กัน loop ค้าง)
+  if(video.srcObject){
+    video.srcObject.getTracks().forEach(t=>t.stop())
   }
 
   status.innerText = "❗ กรุณากดเริ่มสแกนใหม่"
