@@ -396,8 +396,9 @@ async function confirmAttendance(user){
     ) {
 
       // 🔥 ของเดิมคุณ (สำคัญ)
-playSound && playSound("ERROR")
-speak && speak("คุณอยู่นอกพื้นที่")
+playSound("ERROR")
+speak("คุณอยู่นอกพื้นที่")
+
       alert(
         "❌ คุณอยู่ห่างจาก " +
         locationName +
