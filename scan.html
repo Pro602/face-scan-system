@@ -81,7 +81,7 @@ select{
 <br>
 
 <button onclick="startAll()">เริ่มสแกน</button>
-  <button onclick="playSound('IN')">ทดสอบเสียง</button>
+ <button onclick="playSound('IN')">ทดสอบเสียง</button>
 
 <!-- 🔥 ใช้แทนไฟล์เดิมได้เลย -->
 <script>
@@ -111,16 +111,14 @@ Object.values(audioMap).forEach(a=>{
 // 🔥 unlock
 function unlockAudio(){
 
-  Object.values(audioMap).forEach(a=>{
-    a.muted = true
-    a.play().then(()=>{
-      a.pause()
-      a.currentTime = 0
-      a.muted = false
-    }).catch(()=>{})
-  })
+  const testAudio = new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3")
 
-  audioReady = true
+  testAudio.play().then(()=>{
+    audioReady = true
+    console.log("🔊 audio unlocked")
+  }).catch(()=>{
+    console.log("❌ audio blocked")
+  })
 }
 
 // 🔥 play
@@ -183,9 +181,9 @@ async function init(){
 
 // ================= START =================
 function startAll(){
+  needRestart = false
 
-  needRestart = false   // 🔥 ปลดล็อก
-  unlockAudio()
+  unlockAudio()   // ✅ ต้องอยู่ใน onclick เท่านั้น
 
   startCamera()
 }
