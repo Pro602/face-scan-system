@@ -81,6 +81,8 @@ select{
 <br>
 
 <button onclick="startAll()">เริ่มสแกน</button>
+  <!-- 🔊 ปุ่มทดสอบเสียง -->
+<button onclick="playSound('IN')">ทดสอบเสียง</button>
 
 <!-- 🔥 ใช้แทนไฟล์เดิมได้เลย -->
 <script>
@@ -93,45 +95,54 @@ const video = document.getElementById("video")
 const status = document.getElementById("status")
 
 // ================= AUDIO =================
+// ================= AUDIO (FIX ANDROID/iOS) =================
 let audioReady = false
 
-function unlockAudio(){
-  const audio = new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3")
-
-  audio.play().then(()=>{
-    audio.pause()
-    audio.currentTime = 0
-    audioReady = true
-  }).catch(()=>{})
+const audioMap = {
+  IN: new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3"),
+  OUT: new Audio("https://www.soundjay.com/buttons/sounds/button-4.mp3"),
+  ERROR: new Audio("https://www.soundjay.com/buttons/sounds/button-10.mp3")
 }
 
+// 🔥 preload
+Object.values(audioMap).forEach(a=>{
+  a.preload = "auto"
+})
+
+// 🔥 unlock
+function unlockAudio(){
+
+  Object.values(audioMap).forEach(a=>{
+    a.muted = true
+    a.play().then(()=>{
+      a.pause()
+      a.currentTime = 0
+      a.muted = false
+    }).catch(()=>{})
+  })
+
+  audioReady = true
+}
+
+// 🔥 play
 function playSound(type){
 
   if(!audioReady) return
 
-  let url = ""
+  const audio = audioMap[type] || audioMap["ERROR"]
 
-  if(type==="IN"){
-    url="https://www.soundjay.com/buttons/sounds/button-3.mp3"
-  }
-  else if(type==="OUT"){
-    url="https://www.soundjay.com/buttons/sounds/button-4.mp3"
-  }
-  else{
-    url="https://www.soundjay.com/buttons/sounds/button-10.mp3"
-  }
-
-  new Audio(url).play()
+  audio.currentTime = 0
+  audio.play().catch(()=>{})
 }
 
+// 🔥 speak
 function speak(text){
 
-  if(!audioReady) return
-
-  const msg = new SpeechSynthesisUtterance(text)
-  msg.lang = "th-TH"
-
-  speechSynthesis.speak(msg)
+  try{
+    const msg = new SpeechSynthesisUtterance(text)
+    msg.lang = "th-TH"
+    speechSynthesis.speak(msg)
+  }catch(e){}
 }
 
 let knownFaces = []
@@ -139,6 +150,7 @@ let locationsData = []
 let scanInterval = null
 let isProcessing = false
 let capturedImage = null
+let needRestart = false   // 🔥 ตัวนี้สำคัญ
 
 // 🔥 adaptive speed
 const SCAN_DELAY = /iPhone|iPad|iPod/.test(navigator.userAgent) ? 320 : 240
@@ -170,10 +182,12 @@ async function init(){
 
 // ================= START =================
 function startAll(){
-  unlockAudio()   // 🔥 เพิ่มบรรทัดนี้
+
+  needRestart = false   // 🔥 ปลดล็อก
+  unlockAudio()
+
   startCamera()
 }
-
 // ================= LOAD FACE =================
 async function loadFaceDatabase(){
 
@@ -234,7 +248,7 @@ function startScanLoop(){
   if(scanInterval) clearInterval(scanInterval)
 
   scanInterval = setInterval(async()=>{
-
+   if(needRestart) return   // 🔥 กันยิงซ้ำ
     if(isProcessing) return
     if(video.readyState !== 4) return
 
@@ -465,10 +479,19 @@ if(video.srcObject){
 
 // ================= RESET =================
 function resetScan(){
+
   isProcessing = false
   movementHistory = []
-  capturedImage = null   // 🔥 เพิ่มบรรทัดนี้
-  startScanLoop()
+  capturedImage = null
+
+  needRestart = true   // 🔥 บังคับให้หยุด
+
+  if(scanInterval){
+    clearInterval(scanInterval)
+    scanInterval = null
+  }
+
+  status.innerText = "❗ กรุณากดเริ่มสแกนใหม่"
 }
 
 // ================= IMAGE =================
