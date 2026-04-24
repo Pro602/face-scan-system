@@ -82,12 +82,12 @@ select{
 
 <button onclick="startAll()">เริ่มสแกน</button>
 
+<!-- 🔥 ใช้แทนไฟล์เดิมได้เลย -->
 <script>
 
 // ================= CONFIG =================
 const API_URL = localStorage.getItem('gasApiUrl') || GAS_API_URL
 
-// ================= VAR =================
 const video = document.getElementById("video")
 const status = document.getElementById("status")
 
@@ -96,79 +96,29 @@ let locationsData = []
 let scanInterval = null
 let isProcessing = false
 
-// 🔥 state
-let faceCaptured = false
-let isLocked = false
-let alreadySent = false
+// 🔥 adaptive speed
+const SCAN_DELAY = /iPhone|iPad|iPod/.test(navigator.userAgent) ? 320 : 240
+
+// 🔥 strict threshold
+const MATCH_THRESHOLD = 0.45
 
 // 🔥 movement
 let movementHistory = []
-
-// 🔥 ปรับความแม่น
-const MATCH_THRESHOLD = 0.42
-
-// ================= AUDIO =================
-let audioReady = false
-
-function unlockAudio(){
-  const audio = new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3")
-
-  audio.play().then(()=>{
-    audio.pause()
-    audio.currentTime = 0
-    audioReady = true
-  })
-}
-
-function playSound(type){
-
-  if(!audioReady) return
-
-  let url = ""
-
-  if(type==="IN"){
-    url="https://www.soundjay.com/buttons/sounds/button-3.mp3"
-  }
-  else if(type==="OUT"){
-    url="https://www.soundjay.com/buttons/sounds/button-4.mp3"
-  }
-  else{
-    url="https://www.soundjay.com/buttons/sounds/button-10.mp3"
-  }
-
-  new Audio(url).play()
-}
-
-function speak(text){
-
-  if(!audioReady) return
-
-  const msg = new SpeechSynthesisUtterance(text)
-  msg.lang = "th-TH"
-
-  speechSynthesis.speak(msg)
-}
 
 // ================= INIT =================
 window.onload = init
 
 async function init(){
 
-  const MODEL_URL =
-    "https://justadudewhohacks.github.io/face-api.js/models"
+  const MODEL_URL = "https://justadudewhohacks.github.io/face-api.js/models"
 
   await Promise.all([
-
     faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-
     faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-
     faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-
   ])
 
   await loadFaceDatabase()
-
   await loadLocations()
 
   status.innerText = "พร้อมใช้งาน"
@@ -176,58 +126,38 @@ async function init(){
 
 // ================= START =================
 function startAll(){
-
-  unlockAudio()
-
   startCamera()
 }
 
 // ================= LOAD FACE =================
 async function loadFaceDatabase(){
 
-  const res = await fetch(
-    API_URL + "?action=faces&t=" + Date.now()
-  )
-
+  const res = await fetch(API_URL + "?action=faces&t=" + Date.now())
   const data = await res.json()
 
   knownFaces = data.map(u => ({
-
     studentId: u.studentId,
-
     name: u.name,
-
     class: u.department,
-
     descriptor: new Float32Array(u.descriptor)
-
   }))
 }
 
 // ================= LOAD LOCATION =================
 async function loadLocations(){
 
-  const res = await fetch(
-    API_URL + "?action=locations"
-  )
-
+  const res = await fetch(API_URL + "?action=locations")
   const data = await res.json()
 
   locationsData = data
 
-  const select =
-    document.getElementById("locationSelect")
+  const select = document.getElementById("locationSelect")
 
   data.forEach(loc=>{
-
     const opt = document.createElement("option")
-
     opt.value = loc.name
-
     opt.textContent = loc.name
-
     select.appendChild(opt)
-
   })
 }
 
@@ -235,235 +165,83 @@ async function loadLocations(){
 function startCamera(){
 
 navigator.mediaDevices.getUserMedia({
-video:{
-  facingMode:"user",
-
-  brightness: true,
-
-  width:{ ideal:640 },
-  height:{ ideal:480 }
+  video:{
+    facingMode:"user",
+    width:{ ideal:320 },
+    height:{ ideal:240 }
   }
 })
-
-  .then(stream=>{
-
-    video.srcObject = stream
-
+.then(stream=>{
+  video.srcObject = stream
+  video.onloadedmetadata = ()=>{
+    video.play()
     startScanLoop()
-
-  })
-
-  .catch(err=>{
-
-    console.error(err)
-
-    alert("❌ เปิดกล้องไม่ได้")
-
-  })
+  }
+})
+.catch(()=>{
+  alert("❌ เปิดกล้องไม่ได้")
+})
 }
 
 // ================= SCAN =================
 function startScanLoop(){
 
-  if(scanInterval){
-    clearInterval(scanInterval)
-  }
+  if(scanInterval) clearInterval(scanInterval)
 
   scanInterval = setInterval(async()=>{
 
-    if(
-      isProcessing ||
-      faceCaptured ||
-      isLocked ||
-      alreadySent
-    ){
-      return
-    }
-
-    isLocked = true
+    if(isProcessing) return
+    if(video.readyState !== 4) return
 
     try{
 
-      status.innerText =
-        "📸 กรุณาขยับหน้าเล็กน้อย"
+      status.innerText = "📸 มองกล้องและขยับเล็กน้อย"
 
-      // =========================
-      // 🔥 ตรวจจับใบหน้า
-      // =========================
-const det = await faceapi
-  .detectSingleFace(
-    video,
-    new faceapi.TinyFaceDetectorOptions({
-      inputSize: 256,
-      scoreThreshold: 0.3
-    })
-  )
-  .withFaceLandmarks()
-  .withFaceDescriptor()
+      const det = await faceapi
+        .detectSingleFace(
+          video,
+          new faceapi.TinyFaceDetectorOptions({
+            inputSize:160,
+            scoreThreshold:0.5
+          })
+        )
+        .withFaceLandmarks()
+        .withFaceDescriptor()
 
-      // ❌ ไม่เจอหน้า
-      if(!det){
-        return
-      }
-// 🔥 หน้าเล็กเกินไป
-const box = det.detection.box
+      if(!det) return
 
-if(box.width < 120){
-  status.innerText = "📸 กรุณาเข้าใกล้กล้อง"
-  return
-}
-      // =========================
-      // 🔥 กันรูปภาพ
-      // =========================
+      const box = det.detection.box
 
-      // ความมั่นใจต่ำ
-      if(det.detection.score < 0.55){
-        return
-      }
+      if(box.width < 90 || box.width > 300) return
+      if(det.detection.score < 0.6) return
 
-      // ต้องขยับจริง
-      if(!detectRealMovement(det.landmarks)){
-        return
-      }
+      if(!detectMovement(det.landmarks)) return
 
-      // =========================
-      // 🔥 เก็บหลาย sample
-      // =========================
-      const descriptor =
-        await buildStableDescriptor()
+      const best = findBestMatch(det.descriptor)
 
-      if(!descriptor){
-        return
-      }
+      if(best && best.distance < MATCH_THRESHOLD){
 
-      // =========================
-      // 🎯 MATCH
-      // =========================
-      const best =
-        findBestMatch(descriptor)
-
-      if(
-        best &&
-        best.distance < MATCH_THRESHOLD
-      ){
-
-        // 🔥 กันแมทผิดคน
-        const second =
-          findSecondBestMatch(
-            descriptor,
-            best.studentId
-          )
-
-        // ถ้าคะแนนใกล้กันเกินไป
-        if(
-          second &&
-          Math.abs(
-            second.distance -
-            best.distance
-          ) < 0.03
-        ){
-          console.log("ambiguous face")
-          return
-        }
-
-        alreadySent = true
-        faceCaptured = true
         isProcessing = true
-
         clearInterval(scanInterval)
 
-        setTimeout(async()=>{
-
-          await confirmAttendance(best)
-
-        },300)
-
-        return
+        await confirmAttendance(best)
       }
 
-    }catch(err){
-
-      console.error(err)
-
-    }finally{
-
-      isLocked = false
-
+    }catch(e){
+      console.error(e)
     }
 
-  },180)
+  }, SCAN_DELAY)
 }
 
-// ================= BUILD DESCRIPTOR =================
-async function buildStableDescriptor(){
+// ================= MOVEMENT =================
+function detectMovement(landmarks){
 
-  const samples = []
+  const nose = landmarks.getNose()[3]
 
-  for(let i=0;i<2;i++){
+  movementHistory.push({x:nose.x,y:nose.y})
 
-    const det = await faceapi
-
-      .detectSingleFace(
-        video,
-       new faceapi.TinyFaceDetectorOptions({
-  inputSize: 416,
-  scoreThreshold: 0.35
-})
-      )
-
-      .withFaceLandmarks()
-
-      .withFaceDescriptor()
-
-    if(det){
-
-      samples.push(det.descriptor)
-
-    }
-
-    await new Promise(r=>setTimeout(r,40))
-  }
-
-  if(samples.length < 2){
-    return null
-  }
-
-  const avg =
-    new Float32Array(
-      samples[0].length
-    )
-
-  samples.forEach(d=>{
-
-    for(let i=0;i<d.length;i++){
-
-      avg[i] += d[i]
-
-    }
-
-  })
-
-  for(let i=0;i<avg.length;i++){
-
-    avg[i] /= samples.length
-
-  }
-
-  return avg
-}
-
-// ================= REAL MOVEMENT =================
-function detectRealMovement(landmarks){
-
-  const nose =
-    landmarks.getNose()[3]
-
-  movementHistory.push({
-    x:nose.x,
-    y:nose.y
-  })
-
-  if(movementHistory.length > 10){
+  if(movementHistory.length > 5){
     movementHistory.shift()
   }
 
@@ -473,25 +251,12 @@ function detectRealMovement(landmarks){
 
   let move = 0
 
-  for(
-    let i=1;
-    i<movementHistory.length;
-    i++
-  ){
-
-    move += Math.abs(
-      movementHistory[i].x -
-      movementHistory[i-1].x
-    )
-
-    move += Math.abs(
-      movementHistory[i].y -
-      movementHistory[i-1].y
-    )
+  for(let i=1;i<movementHistory.length;i++){
+    move += Math.abs(movementHistory[i].x - movementHistory[i-1].x)
+    move += Math.abs(movementHistory[i].y - movementHistory[i-1].y)
   }
 
-  // 🔥 ต้องมี movement จริง
-  return move > 3
+  return move > 1.5
 }
 
 // ================= MATCH =================
@@ -500,62 +265,10 @@ function findBestMatch(query){
   let best = null
 
   knownFaces.forEach(face=>{
-
-    const dist =
-      faceapi.euclideanDistance(
-        query,
-        face.descriptor
-      )
-
-    if(
-      !best ||
-      dist < best.distance
-    ){
-
-      best = {
-        ...face,
-        distance: dist
-      }
-
+    const dist = faceapi.euclideanDistance(query, face.descriptor)
+    if(!best || dist < best.distance){
+      best = {...face, distance:dist}
     }
-
-  })
-
-  return best
-}
-
-// ================= SECOND MATCH =================
-function findSecondBestMatch(
-  query,
-  excludeId
-){
-
-  let best = null
-
-  knownFaces.forEach(face=>{
-
-    if(face.studentId === excludeId){
-      return
-    }
-
-    const dist =
-      faceapi.euclideanDistance(
-        query,
-        face.descriptor
-      )
-
-    if(
-      !best ||
-      dist < best.distance
-    ){
-
-      best = {
-        ...face,
-        distance: dist
-      }
-
-    }
-
   })
 
   return best
@@ -563,370 +276,126 @@ function findSecondBestMatch(
 
 // ================= GPS =================
 function getGPS(){
-
   return new Promise(resolve=>{
-
     navigator.geolocation.getCurrentPosition(
-
       pos=>resolve({
-
         lat:pos.coords.latitude,
-
         lng:pos.coords.longitude
-
       }),
-
-      ()=>resolve({
-        lat:"",
-        lng:""
-      }),
-
-      {
-        enableHighAccuracy:true,
-        timeout:10000
-      }
-
+      ()=>resolve({lat:"",lng:""})
     )
-
   })
 }
 
-// ================= DIST =================
-function getDistance(
-  lat1,
-  lon1,
-  lat2,
-  lon2
-){
-
-  const R = 6371e3
-
-  const toRad =
-    x => x*Math.PI/180
-
-  const dLat =
-    toRad(lat2-lat1)
-
-  const dLon =
-    toRad(lon2-lon1)
-
-  const a =
-
-    Math.sin(dLat/2)**2 +
-
-    Math.cos(toRad(lat1)) *
-
-    Math.cos(toRad(lat2)) *
-
-    Math.sin(dLon/2)**2
-
-  return R * (
-    2 * Math.atan2(
-      Math.sqrt(a),
-      Math.sqrt(1-a)
-    )
-  )
-}
-
 // ================= CONFIRM =================
-async function confirmAttendance(user) {
+async function confirmAttendance(user){
 
-  const type =
-    document.getElementById(
-      "typeSelect"
-    ).value
+  const type = document.getElementById("typeSelect").value
+  const locationName = document.getElementById("locationSelect").value
 
-  const locationName =
-    document.getElementById(
-      "locationSelect"
-    ).value
-
-  // ===============================
-  // ❌ ไม่เลือกสถานที่
-  // ===============================
-  if (!locationName) {
-
+  if(!locationName){
     alert("❌ กรุณาเลือกสถานที่")
-
-    resetScanState()
-
-    startScanLoop()
-
+    resetScan()
     return
   }
 
-  // ===============================
-  // 📍 GPS
-  // ===============================
   const gps = await getGPS()
 
-  if (!gps.lat) {
-
-    alert("❌ กรุณาเปิด GPS")
-
-    resetScanState()
-
-    startScanLoop()
-
+  if(!gps.lat){
+    alert("❌ เปิด GPS")
+    resetScan()
     return
   }
 
-  const locationText =
-    gps.lat + "," + gps.lng
+  const loc = locationsData.find(l=>l.name===locationName)
 
-  const loc =
-    locationsData.find(
-      l => l.name === locationName
-    )
-
-  // ===============================
-  // 📏 ตรวจระยะ
-  // ===============================
-  if (loc) {
-
-    const dist = getDistance(
-
-      gps.lat,
-      gps.lng,
-
-      loc.lat,
-      loc.lng
-
-    )
-
-    const radius =
-      loc.radius || 300
-
-    if (
-      locationName !==
-      "ทำงานนอกสถานที่" &&
-      dist > radius
-    ) {
-
-      playSound("ERROR")
-
-      speak("อยู่นอกพื้นที่")
-
-      alert(
-        "❌ คุณอยู่ห่างจาก " +
-        locationName +
-        " ประมาณ " +
-        Math.round(dist) +
-        " เมตร"
-      )
-
-      resetScanState()
-
-      startScanLoop()
-
+  if(loc){
+    const dist = getDistance(gps.lat,gps.lng,loc.lat,loc.lng)
+    if(dist > (loc.radius||300)){
+      alert("❌ อยู่นอกพื้นที่")
+      resetScan()
       return
     }
   }
 
-  // ===============================
-  // ❗ confirm
-  // ===============================
-  if (
-    !confirm(
-      `ยืนยัน ${type}\n${user.name}`
-    )
-  ){
-
-    resetScanState()
-
-    startScanLoop()
-
+  if(!confirm(`ยืนยัน ${type}\n${user.name}`)){
+    resetScan()
     return
   }
 
-  // ===============================
-  // 📸 capture image
-  // ===============================
-  const imageBase64 =
-    captureImage()
+  const imageBase64 = captureImage()
 
-  if(video.srcObject){
+  status.innerText="⏳ กำลังบันทึก..."
 
-    video.srcObject
-      .getTracks()
-      .forEach(t=>t.stop())
-
-  }
-
-  status.innerText =
-    "⏳ กำลังบันทึกข้อมูล..."
-
-  try{
-
-    // ===============================
-    // save attendance
-    // ===============================
-    await fetch(API_URL,{
-
-      method:"POST",
-
-      mode:"no-cors",
-
-      headers:{
-        "Content-Type":
-        "application/json"
-      },
-
-      body:JSON.stringify({
-
-        action:"attendance",
-
-        studentId:user.studentId,
-
-        name:user.name,
-
-        department:user.class,
-
-        type:type,
-
-        location:locationText,
-
-        locationName:locationName
-
-      })
-
+  await fetch(API_URL,{
+    method:"POST",
+    mode:"no-cors",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({
+      action:"attendance",
+      studentId:user.studentId,
+      name:user.name,
+      department:user.class,
+      type:type,
+      location:gps.lat+","+gps.lng,
+      locationName:locationName
     })
+  })
 
-    await new Promise(
-      r=>setTimeout(r,1000)
-    )
+  const params = new URLSearchParams()
+  params.append("action","uploadImage")
+  params.append("studentId",user.studentId)
+  params.append("image",imageBase64)
 
-    // ===============================
-    // save image
-    // ===============================
-    const params =
-      new URLSearchParams()
+  await fetch(API_URL,{
+    method:"POST",
+    mode:"no-cors",
+    headers:{ "Content-Type":"application/x-www-form-urlencoded" },
+    body:params.toString()
+  })
 
-    params.append(
-      "action",
-      "uploadImage"
-    )
+  alert("✅ บันทึกสำเร็จ")
 
-    params.append(
-      "studentId",
-      user.studentId
-    )
-
-    params.append(
-      "image",
-      imageBase64
-    )
-
-    await fetch(API_URL,{
-
-      method:"POST",
-
-      mode:"no-cors",
-
-      headers:{
-        "Content-Type":
-        "application/x-www-form-urlencoded"
-      },
-
-      body:params.toString()
-
-    })
-
-    playSound(type)
-
-    await Swal.fire({
-
-      title:"บันทึกสำเร็จ",
-
-      text:
-        "บันทึกข้อมูลและรูปภาพเรียบร้อยแล้ว",
-
-      icon:"success",
-
-      confirmButtonText:"ตกลง",
-
-      confirmButtonColor:"#6366f1",
-
-      allowOutsideClick:false
-
-    })
-
-    resetScanState()
-
-    if(window.opener){
-
-      window.close()
-
-    }else{
-
-      window.location.href =
-        "https://pro602.github.io/Scan/?v=1.1"
-
-    }
-
-  }catch(err){
-
-    console.error(err)
-
-    alert(
-      "❌ เกิดข้อผิดพลาด"
-    )
-
-    resetScanState()
-
-    startScanLoop()
-
-  }
+  location.reload()
 }
 
 // ================= RESET =================
-function resetScanState(){
-
+function resetScan(){
   isProcessing = false
-
-  isLocked = false
-
-  faceCaptured = false
-
-  alreadySent = false
-
   movementHistory = []
+  startScanLoop()
 }
 
 // ================= IMAGE =================
 function captureImage(){
 
-  const canvas =
-    document.createElement(
-      "canvas"
-    )
-
+  const canvas = document.createElement("canvas")
   canvas.width = 320
-
   canvas.height = 240
 
-  const ctx =
-    canvas.getContext("2d")
+  const ctx = canvas.getContext("2d")
 
-  ctx.translate(
-    canvas.width,
-    0
-  )
-
+  ctx.translate(canvas.width,0)
   ctx.scale(-1,1)
 
-  ctx.drawImage(
-    video,
-    0,
-    0,
-    canvas.width,
-    canvas.height
-  )
+  ctx.drawImage(video,0,0,canvas.width,canvas.height)
 
-  return canvas.toDataURL(
-    "image/jpeg",
-    0.5
-  )
+  return canvas.toDataURL("image/jpeg",0.5)
+}
+
+// ================= DIST =================
+function getDistance(lat1,lon1,lat2,lon2){
+
+  const R=6371e3
+  const toRad=x=>x*Math.PI/180
+
+  const dLat=toRad(lat2-lat1)
+  const dLon=toRad(lon2-lon1)
+
+  const a=Math.sin(dLat/2)**2+
+  Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2
+
+  return R*(2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)))
 }
 
 </script>
