@@ -430,10 +430,11 @@ speak("คุณอยู่นอกพื้นที่")
   }
       // 🔊 เพิ่มตรงนี้
 playSound(type)
-  // 🔥 หยุดกล้อง (สำคัญมาก)
-if(video.srcObject){
-  video.srcObject.getTracks().forEach(t=>t.stop())
-}
+setTimeout(()=>{
+  if(video.srcObject){
+    video.srcObject.getTracks().forEach(t=>t.stop())
+  }
+}, 100)
 
   // 🔥 ใช้ภาพที่ capture ตอนสแกน (แก้ bug ภาพผิด)
   if(!capturedImage){
