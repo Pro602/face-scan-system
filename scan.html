@@ -81,6 +81,7 @@ select{
 <br>
 
 <button onclick="startAll()">เริ่มสแกน</button>
+  <button onclick="playSound('IN')">ทดสอบเสียง</button>
 
 <!-- 🔥 ใช้แทนไฟล์เดิมได้เลย -->
 <script>
@@ -126,12 +127,20 @@ function unlockAudio(){
 // 🔥 play
 function playSound(type){
 
-  if(!audioReady) return
+  const src = {
+    IN: "https://www.soundjay.com/buttons/sounds/button-3.mp3",
+    OUT: "https://www.soundjay.com/buttons/sounds/button-4.mp3",
+    ERROR: "https://www.soundjay.com/buttons/sounds/button-10.mp3"
+  }[type]
 
-  const audio = audioMap[type] || audioMap["ERROR"]
+  const audio = new Audio(src)
 
-  audio.currentTime = 0
-  audio.play().catch(()=>{})
+  audio.play().catch(()=>{
+    // 🔥 fallback
+    if(type === "IN") speak("เข้างานสำเร็จ")
+    if(type === "OUT") speak("ออกงานสำเร็จ")
+    if(type === "ERROR") speak("เกิดข้อผิดพลาด")
+  })
 }
 
 // 🔥 speak
