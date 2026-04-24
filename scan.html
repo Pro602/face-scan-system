@@ -81,8 +81,6 @@ select{
 <br>
 
 <button onclick="startAll()">เริ่มสแกน</button>
-  <!-- 🔊 ปุ่มทดสอบเสียง -->
-<button onclick="playSound('IN')">ทดสอบเสียง</button>
 
 <!-- 🔥 ใช้แทนไฟล์เดิมได้เลย -->
 <script>
@@ -151,7 +149,6 @@ let scanInterval = null
 let isProcessing = false
 let capturedImage = null
 let needRestart = false   // 🔥 ตัวนี้สำคัญ
-let alreadyConfirmed = false
 
 // 🔥 adaptive speed
 const SCAN_DELAY = /iPhone|iPad|iPod/.test(navigator.userAgent) ? 320 : 240
@@ -262,8 +259,7 @@ function startScanLoop(){
           video,
           new faceapi.TinyFaceDetectorOptions({
             inputSize:160,
-            scoreThreshold:0.4
-            if(det.detection.score < 0.5) return
+            scoreThreshold:0.5
           })
         )
         .withFaceLandmarks()
@@ -273,7 +269,7 @@ function startScanLoop(){
 
       const box = det.detection.box
 
-      if(box.width < 70 || box.width > 350) return
+      if(box.width < 90 || box.width > 300) return
       if(det.detection.score < 0.6) return
 
       if(!detectMovement(det.landmarks)) return
@@ -281,10 +277,7 @@ function startScanLoop(){
       const best = findBestMatch(det.descriptor)
 
       if(best && best.distance < MATCH_THRESHOLD){
-        
-  if(alreadyConfirmed) return   // 🔥 กันซ้ำเด็ดขาด
 
-  alreadyConfirmed = true       // 🔥 ล็อกทันที
 // 🔥 จับภาพทันทีตอนสแกนผ่าน
 capturedImage = captureImage()
 
@@ -328,7 +321,7 @@ function detectMovement(landmarks){
     move += Math.abs(movementHistory[i].y - movementHistory[i-1].y)
   }
 
-  return move > 0.8
+  return move > 1.5
 }
 
 // ================= MATCH =================
@@ -362,9 +355,6 @@ function getGPS(){
 // ================= CONFIRM =================
 async function confirmAttendance(user){
 
-  if(alreadyConfirmed){
-    return
-  }
   const type = document.getElementById("typeSelect").value
   const locationName = document.getElementById("locationSelect").value
 
@@ -423,13 +413,10 @@ speak("คุณอยู่นอกพื้นที่")
   }
 
   // ❗ confirm (เหมือนเดิม)
-if (!confirm(`ยืนยัน ${type}\n${user.name}`)){
-  resetScan()
-  return
-}
-
-// 🔥 สำคัญมาก
-alreadyConfirmed = true
+  if (!confirm(`ยืนยัน ${type}\n${user.name}`)){
+    resetScan()
+    return
+  }
   // 🔥 หยุดกล้อง (สำคัญมาก)
 if(video.srcObject){
   video.srcObject.getTracks().forEach(t=>t.stop())
@@ -476,9 +463,8 @@ if(video.srcObject){
       headers:{ "Content-Type":"application/x-www-form-urlencoded" },
       body:params.toString()
     })
-    // 🔊 เล่นเสียงหลังบันทึกสำเร็จ
+// 🔊 เล่นเสียงหลังบันทึกสำเร็จ
 playSound(type)
-
     alert("✅ บันทึกสำเร็จ")
 
     location.reload()
@@ -497,17 +483,11 @@ function resetScan(){
   movementHistory = []
   capturedImage = null
 
-  alreadyConfirmed = false   // 🔥 สำคัญมาก
-  needRestart = true
+  needRestart = true   // 🔥 บังคับให้หยุด
 
   if(scanInterval){
     clearInterval(scanInterval)
     scanInterval = null
-  }
-
-  // 🔥 หยุดกล้องด้วย (กัน loop ค้าง)
-  if(video.srcObject){
-    video.srcObject.getTracks().forEach(t=>t.stop())
   }
 
   status.innerText = "❗ กรุณากดเริ่มสแกนใหม่"
