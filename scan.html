@@ -81,6 +81,7 @@ select{
 <br>
 
 <button onclick="startAll()">เริ่มสแกน</button>
+  <button onclick="playSound('IN')">ทดสอบเสียง</button>
 
 <!-- 🔥 ใช้แทนไฟล์เดิมได้เลย -->
 <script>
@@ -149,6 +150,8 @@ let scanInterval = null
 let isProcessing = false
 let capturedImage = null
 let needRestart = false   // 🔥 ตัวนี้สำคัญ
+let alreadyConfirmed = false
+let confirmLock = false
 
 // 🔥 adaptive speed
 const SCAN_DELAY = /iPhone|iPad|iPod/.test(navigator.userAgent) ? 320 : 240
@@ -277,6 +280,10 @@ function startScanLoop(){
       const best = findBestMatch(det.descriptor)
 
       if(best && best.distance < MATCH_THRESHOLD){
+      playSound("IN")   // 🔊 feedback ตอนสแกนติด
+      if(alreadyConfirmed) return   // 🔥 กันซ้ำ
+
+      alreadyConfirmed = true       // 🔥 ล็อกทันที
 
 // 🔥 จับภาพทันทีตอนสแกนผ่าน
 capturedImage = captureImage()
@@ -286,7 +293,7 @@ clearInterval(scanInterval)
 
 // เว้นจังหวะให้เหมือนระบบเดิม
 setTimeout(async()=>{
-  await confirmAttendance(best)
+  setTimeout(...)
 },300)
 
 return
@@ -354,6 +361,8 @@ function getGPS(){
 
 // ================= CONFIRM =================
 async function confirmAttendance(user){
+  if(confirmLock) return   // 🔥 กัน async ยิงซ้ำ
+  confirmLock = true       // 🔥 ล็อกทันที
 
   const type = document.getElementById("typeSelect").value
   const locationName = document.getElementById("locationSelect").value
@@ -417,6 +426,8 @@ speak("คุณอยู่นอกพื้นที่")
     resetScan()
     return
   }
+      // 🔊 เพิ่มตรงนี้
+playSound(type)
   // 🔥 หยุดกล้อง (สำคัญมาก)
 if(video.srcObject){
   video.srcObject.getTracks().forEach(t=>t.stop())
@@ -483,11 +494,17 @@ function resetScan(){
   movementHistory = []
   capturedImage = null
 
-  needRestart = true   // 🔥 บังคับให้หยุด
+  alreadyConfirmed = false   // 🔥 สำคัญมาก
+  confirmLock = false   // 🔥 สำคัญมาก
+  needRestart = true
 
   if(scanInterval){
     clearInterval(scanInterval)
     scanInterval = null
+  }
+
+  if(video.srcObject){
+    video.srcObject.getTracks().forEach(t=>t.stop())
   }
 
   status.innerText = "❗ กรุณากดเริ่มสแกนใหม่"
