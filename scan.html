@@ -137,9 +137,9 @@ function playSound(type){
 
   audio.play().catch(()=>{
     // 🔥 fallback
-    if(type === "IN") speak("เข้างานสำเร็จ")
-    if(type === "OUT") speak("ออกงานสำเร็จ")
-    if(type === "ERROR") speak("เกิดข้อผิดพลาด")
+    if(type === "IN") speak("คุณบันทึกเข้างานสำเร็จ")
+    if(type === "OUT") speak("คุณบันทึกออกงานสำเร็จ")
+    if(type === "ERROR") speak("เกิดข้อผิดพลาดกรุณาเลือกสถานที่ให้ถูกสแกนใหม่")
   })
 }
 
