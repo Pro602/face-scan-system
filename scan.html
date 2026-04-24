@@ -111,14 +111,17 @@ Object.values(audioMap).forEach(a=>{
 // 🔥 unlock
 function unlockAudio(){
 
-  const testAudio = new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3")
-
-  testAudio.play().then(()=>{
-    audioReady = true
-    console.log("🔊 audio unlocked")
-  }).catch(()=>{
-    console.log("❌ audio blocked")
+  Object.values(audioMap).forEach(a=>{
+    a.muted = true
+    a.play().then(()=>{
+      a.pause()
+      a.currentTime = 0
+      a.muted = false
+    }).catch(()=>{})
   })
+
+  audioReady = true
+  console.log("🔊 audio unlocked (all)")
 }
 
 // 🔥 play
