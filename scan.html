@@ -258,7 +258,8 @@ function startScanLoop(){
   if(scanInterval) clearInterval(scanInterval)
 
   scanInterval = setInterval(async()=>{
-   if(needRestart) return   // 🔥 กันยิงซ้ำ
+
+    if(needRestart) return
     if(isProcessing) return
     if(video.readyState !== 4) return
 
@@ -288,23 +289,44 @@ function startScanLoop(){
 
       const best = findBestMatch(det.descriptor)
 
-      if(best && best.distance < MATCH_THRESHOLD){
-      if(alreadyConfirmed) return   // 🔥 กันซ้ำ
+      // ✅ ไม่พบคนที่ตรงกับฐานข้อมูล
+      if(!best || best.distance >= MATCH_THRESHOLD){
 
-      alreadyConfirmed = true       // 🔥 ล็อกทันที
+        isProcessing = true
+        clearInterval(scanInterval)
 
-// 🔥 จับภาพทันทีตอนสแกนผ่าน
-capturedImage = captureImage()
+        status.innerText = "❌ ไม่พบข้อมูลใบหน้าที่ลงทะเบียน"
 
-isProcessing = true
-clearInterval(scanInterval)
+        playSound("ERROR")
+        speak("คุณยังไม่ได้ลงทะเบียนใช้งาน")
 
-// เว้นจังหวะให้เหมือนระบบเดิม
-setTimeout(async()=>{
-  await confirmAttendance(best)
-},300)
+        await Swal.fire({
+          icon: "error",
+          title: "ไม่พบข้อมูลลงทะเบียน",
+          text: "ใบหน้านี้ยังไม่ได้ลงทะเบียนในระบบ"
+        })
 
-return
+        resetScan()
+        return
+      }
+
+      // ✅ พบคนที่ตรงกับฐานข้อมูล
+      if(best.distance < MATCH_THRESHOLD){
+
+        if(alreadyConfirmed) return
+
+        alreadyConfirmed = true
+
+        capturedImage = captureImage()
+
+        isProcessing = true
+        clearInterval(scanInterval)
+
+        setTimeout(async()=>{
+          await confirmAttendance(best)
+        },300)
+
+        return
       }
 
     }catch(e){
@@ -313,7 +335,6 @@ return
 
   }, SCAN_DELAY)
 }
-
 // ================= MOVEMENT =================
 function detectMovement(landmarks){
 
